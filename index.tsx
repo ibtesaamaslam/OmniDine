@@ -240,7 +240,7 @@ const reducer = (state: AppState, action: Action): AppState => {
       };
     case 'ADD_DISH': return { ...state, dishes: [...state.dishes, action.payload] };
     case 'UPDATE_DISH': 
-      return { ...state, dishes: state.dishes.map(d => d.id === action.payload.id ? action.payload : d) };
+      return { ...state, dishes: state.dishes.map(d => d.id === action.payload ? action.payload : d) };
     case 'DELETE_DISH':
       return { ...state, dishes: state.dishes.filter(d => d.id !== action.payload) };
     case 'TOGGLE_DISH_AVAILABILITY':
@@ -1344,18 +1344,15 @@ const KDSView = () => {
                   </div>
                   <button
                     onClick={() => {
-                        let nextStatus: OrderItem['status'] = 'pending';
-                        if (item.status === 'pending') nextStatus = 'preparing';
-                        else if (item.status === 'preparing') nextStatus = 'ready';
-                        dispatch({ type: 'UPDATE_ORDER_ITEM_STATUS', payload: { orderId: order.id, itemId: item.id, status: nextStatus }});
-                        
-                        // Inventory trigger
-                        if (nextStatus === 'preparing') {
+                        if (item.status === 'pending') {
+                            dispatch({ type: 'UPDATE_ORDER_ITEM_STATUS', payload: { orderId: order.id, itemId: item.id, status: 'preparing' }});
                             dispatch({ type: 'CONSUME_INVENTORY', payload: { items: [item] } });
+                        } else if (item.status === 'preparing') {
+                             dispatch({ type: 'UPDATE_ORDER_ITEM_STATUS', payload: { orderId: order.id, itemId: item.id, status: 'ready' }});
                         }
                     }}
                     className={`text-xs px-2 py-1 rounded border capitalize transition-colors ${
-                      item.status === 'ready' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                      item.status === 'ready' ? 'bg-green-100 text-green-700 border-green-200 cursor-default' :
                       item.status === 'preparing' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
                       'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
                     }`}
@@ -1370,6 +1367,12 @@ const KDSView = () => {
                 <Button 
                   className="w-full" 
                   onClick={() => {
+                      // Consume inventory for items jumping from pending -> ready
+                      const itemsToConsume = order.items.filter(i => i.status === 'pending');
+                      if (itemsToConsume.length > 0) {
+                          dispatch({ type: 'CONSUME_INVENTORY', payload: { items: itemsToConsume } });
+                      }
+
                       dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId: order.id, status: 'ready' } });
                       // Mark all items ready if not already
                       order.items.forEach(item => {
@@ -1564,45 +1567,86 @@ const ReservationsView = () => {
   );
 };
 
+// Fix: Added MenuManagementView component
 const MenuManagementView = () => {
   const { state, dispatch } = useContext(StoreContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDish, setEditingDish] = useState<Dish | undefined>(undefined);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [localSearch, setLocalSearch] = useState('');
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleEdit = (dish: Dish) => {
+    setEditingDish(dish);
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this dish?')) {
       dispatch({ type: 'DELETE_DISH', payload: id });
     }
   };
 
-  const openEdit = (dish: Dish) => {
-    setEditingDish(dish);
-    setIsModalOpen(true);
+  const handleToggle = (id: string) => {
+    dispatch({ type: 'TOGGLE_DISH_AVAILABILITY', payload: id });
   };
 
-  const openAdd = () => {
-    setEditingDish(undefined);
-    setIsModalOpen(true);
-  };
+  const filteredDishes = state.dishes.filter(d => {
+    const matchesCategory = selectedCategory === 'all' || d.categoryId === selectedCategory;
+    const matchesSearch = d.name.toLowerCase().includes(localSearch.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <AddDishModal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        dishToEdit={editingDish} 
+        onClose={() => { setIsModalOpen(false); setEditingDish(undefined); }} 
+        dishToEdit={editingDish}
       />
-      
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">Menu Management</h1>
-        <Button onClick={openAdd}>
-          <Plus className="w-4 h-4" /> Add New Dish
-        </Button>
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+            <h1 className="text-3xl font-bold text-slate-900">Menu Management</h1>
+            <p className="text-slate-500 mt-1">Manage dishes, prices, and availability.</p>
+        </div>
+        <div className="flex gap-3">
+          <input 
+              type="text" 
+              placeholder="Search..." 
+              className="border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+            />
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="w-4 h-4" /> Add Dish
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+        <button
+            onClick={() => setSelectedCategory('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                selectedCategory === 'all' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'
+            }`}
+        >
+            All Items
+        </button>
+        {state.categories.map(cat => (
+            <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                    selectedCategory === cat.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'
+                }`}
+            >
+                {cat.name}
+            </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="p-4 text-xs font-bold text-slate-500 uppercase">Dish Name</th>
@@ -1613,44 +1657,47 @@ const MenuManagementView = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {state.dishes.map(dish => (
-              <tr key={dish.id} className="hover:bg-slate-50">
-                <td className="p-4 font-medium text-slate-900">{dish.name}</td>
-                <td className="p-4 text-slate-600">
-                  {state.categories.find(c => c.id === dish.categoryId)?.name}
-                </td>
-                <td className="p-4 text-slate-600">{formatCurrency(dish.price)}</td>
-                <td className="p-4">
-                  <button 
-                    onClick={() => dispatch({ type: 'TOGGLE_DISH_AVAILABILITY', payload: dish.id })}
-                    className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                      dish.available 
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                    }`}
-                  >
-                    {dish.available ? <CheckCircle className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-                    {dish.available ? 'Available' : 'Unavailable'}
-                  </button>
-                </td>
-                <td className="p-4">
-                  <div className="flex justify-end gap-2">
-                    <button 
-                      onClick={() => openEdit(dish)}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={(e) => handleDelete(e, dish.id)}
-                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {filteredDishes.length === 0 ? (
+                <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-500">No dishes found.</td>
+                </tr>
+            ) : (
+                filteredDishes.map(dish => (
+                <tr key={dish.id} className="hover:bg-slate-50">
+                    <td className="p-4">
+                    <p className="font-medium text-slate-900">{dish.name}</p>
+                    <p className="text-xs text-slate-500 truncate max-w-xs">{dish.description}</p>
+                    </td>
+                    <td className="p-4 text-slate-600">
+                    {state.categories.find(c => c.id === dish.categoryId)?.name}
+                    </td>
+                    <td className="p-4 font-mono text-slate-700">{formatCurrency(dish.price)}</td>
+                    <td className="p-4">
+                        <button 
+                            onClick={() => handleToggle(dish.id)}
+                            className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                                dish.available 
+                                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
+                                    : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                            }`}
+                        >
+                            {dish.available ? <CheckCircle className="w-3 h-3"/> : <X className="w-3 h-3"/>}
+                            {dish.available ? 'Available' : 'Unavailable'}
+                        </button>
+                    </td>
+                    <td className="p-4 text-right">
+                    <div className="flex justify-end gap-2">
+                        <button onClick={() => handleEdit(dish)} className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                        <Edit className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDelete(dish.id)} className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                        </button>
+                    </div>
+                    </td>
+                </tr>
+                ))
+            )}
           </tbody>
         </table>
       </div>
@@ -1658,75 +1705,75 @@ const MenuManagementView = () => {
   );
 };
 
+// Fix: Added InventoryView component
 const InventoryView = () => {
   const { state, dispatch } = useContext(StoreContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const updateStock = (itemId: string, newStock: number) => {
-    dispatch({ type: 'UPDATE_INVENTORY', payload: { itemId, newStock: Math.max(0, newStock) } });
+  const handleStockUpdate = (itemId: string, newStock: number) => {
+      if (newStock < 0) return;
+      dispatch({ type: 'UPDATE_INVENTORY', payload: { itemId, newStock } });
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto">
       <AddInventoryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-      
+
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">Inventory</h1>
+        <div>
+            <h1 className="text-3xl font-bold text-slate-900">Inventory</h1>
+            <p className="text-slate-500 mt-1">Track stock levels and ingredients.</p>
+        </div>
         <Button onClick={() => setIsModalOpen(true)}>
           <Plus className="w-4 h-4" /> Add Item
         </Button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Item Name</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Current Stock</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Unit</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {state.inventory.map(item => (
-              <tr key={item.id} className="hover:bg-slate-50">
-                <td className="p-4 font-medium text-slate-900">{item.name}</td>
-                <td className="p-4">
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => updateStock(item.id, item.stock - 1)}
-                      className="p-1 rounded bg-slate-100 hover:bg-slate-200"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <input 
-                      type="number"
-                      value={item.stock}
-                      onChange={(e) => updateStock(item.id, parseFloat(e.target.value) || 0)}
-                      className="w-20 text-center border rounded p-1"
-                    />
-                    <button 
-                      onClick={() => updateStock(item.id, item.stock + 1)}
-                      className="p-1 rounded bg-slate-100 hover:bg-slate-200"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                </td>
-                <td className="p-4 text-slate-500">{item.unit}</td>
-                <td className="p-4">
-                  {item.stock <= item.threshold ? (
-                    <span className="flex items-center gap-1 text-red-600 text-sm font-medium">
-                      <AlertCircle className="w-4 h-4" /> Low Stock
-                    </span>
-                  ) : (
-                    <span className="text-green-600 text-sm font-medium">In Stock</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {state.inventory.map(item => {
+            const isLow = item.stock <= item.threshold;
+            return (
+                <div key={item.id} className={`bg-white p-6 rounded-xl shadow-sm border ${isLow ? 'border-red-200 ring-1 ring-red-100' : 'border-slate-200'}`}>
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="font-bold text-slate-900">{item.name}</h3>
+                            <p className="text-xs text-slate-500">Threshold: {item.threshold} {item.unit}</p>
+                        </div>
+                        {isLow && (
+                            <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">
+                                <AlertCircle className="w-3 h-3" /> Low Stock
+                            </span>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-end justify-between gap-4">
+                         <div className="flex-1">
+                             <label className="text-xs font-semibold text-slate-500 mb-1 block">Current Stock ({item.unit})</label>
+                             <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => handleStockUpdate(item.id, item.stock - 1)}
+                                    className="p-1 rounded bg-slate-100 hover:bg-slate-200"
+                                >
+                                    <Minus className="w-4 h-4 text-slate-600" />
+                                </button>
+                                <input 
+                                    type="number" 
+                                    value={item.stock}
+                                    onChange={(e) => handleStockUpdate(item.id, parseFloat(e.target.value) || 0)}
+                                    className="w-20 text-center font-bold text-lg border-b border-slate-200 focus:border-indigo-500 focus:outline-none"
+                                />
+                                <button 
+                                    onClick={() => handleStockUpdate(item.id, item.stock + 1)}
+                                    className="p-1 rounded bg-slate-100 hover:bg-slate-200"
+                                >
+                                    <Plus className="w-4 h-4 text-slate-600" />
+                                </button>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+            );
+        })}
       </div>
     </div>
   );
@@ -1742,8 +1789,5 @@ const App = () => {
   );
 };
 
-const container = document.getElementById('root');
-if (container) {
-  const root = createRoot(container);
-  root.render(<App />);
-}
+const root = createRoot(document.getElementById('root')!);
+root.render(<App />);
