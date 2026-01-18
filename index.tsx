@@ -1,0 +1,1502 @@
+import React, { useState, useContext, createContext, useEffect, useReducer } from 'react';
+import { createRoot } from 'react-dom/client';
+import { 
+  LayoutDashboard, 
+  UtensilsCrossed, 
+  ChefHat, 
+  Settings, 
+  LogOut, 
+  Plus, 
+  Minus, 
+  Trash2, 
+  CheckCircle, 
+  Clock, 
+  AlertCircle,
+  Users,
+  DollarSign,
+  ShoppingBag,
+  Menu as MenuIcon,
+  X,
+  AlertTriangle,
+  Package,
+  Edit,
+  Save,
+  RefreshCw
+} from 'lucide-react';
+
+// --- TYPES & INTERFACES ---
+
+type Role = 'admin' | 'manager' | 'waiter' | 'chef' | 'customer';
+
+interface User {
+  id: string;
+  name: string;
+  role: Role;
+}
+
+interface Modifier {
+  id: string;
+  name: string;
+  price: number;
+}
+
+interface IngredientRef {
+  inventoryItemId: string;
+  quantity: number; // Amount consumed per dish
+}
+
+interface Dish {
+  id: string;
+  categoryId: string;
+  name: string;
+  price: number;
+  image?: string;
+  description?: string;
+  available: boolean;
+  modifiers?: Modifier[];
+  recipe?: IngredientRef[]; // Link to inventory
+}
+
+interface InventoryItem {
+  id: string;
+  name: string;
+  unit: string;
+  stock: number;
+  threshold: number;
+}
+
+interface Category {
+  id: string;
+  name: string;
+}
+
+interface OrderItem {
+  id: string;
+  dishId: string;
+  name: string;
+  price: number; // Unit price (base + modifiers)
+  modifiers: Modifier[];
+  qty: number;
+  status: 'pending' | 'preparing' | 'ready' | 'served';
+}
+
+interface Order {
+  id: string;
+  tableId: string;
+  serverName: string;
+  items: OrderItem[];
+  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'paid';
+  total: number;
+  createdAt: Date;
+}
+
+interface Table {
+  id: string;
+  name: string;
+  status: 'available' | 'occupied' | 'reserved';
+  seats: number;
+}
+
+// --- MOCK DATA ---
+
+const INITIAL_CATEGORIES: Category[] = [
+  { id: 'c1', name: 'Starters' },
+  { id: 'c2', name: 'Mains' },
+  { id: 'c3', name: 'Burgers' },
+  { id: 'c4', name: 'Drinks' },
+  { id: 'c5', name: 'Desserts' },
+];
+
+const BURGER_MODIFIERS: Modifier[] = [
+  { id: 'm1', name: 'Extra Cheese', price: 1.50 },
+  { id: 'm2', name: 'Bacon', price: 2.00 },
+  { id: 'm3', name: 'No Onions', price: 0 },
+  { id: 'm4', name: 'Gluten Free Bun', price: 1.00 },
+];
+
+const INITIAL_INVENTORY: InventoryItem[] = [
+  { id: 'inv1', name: 'Burger Bun', unit: 'pcs', stock: 50, threshold: 10 },
+  { id: 'inv2', name: 'Beef Patty', unit: 'pcs', stock: 40, threshold: 10 },
+  { id: 'inv3', name: 'Cheese Slice', unit: 'pcs', stock: 100, threshold: 20 },
+  { id: 'inv4', name: 'Lettuce', unit: 'head', stock: 10, threshold: 2 },
+  { id: 'inv5', name: 'Tomato', unit: 'kg', stock: 5, threshold: 1 },
+  { id: 'inv6', name: 'Fries', unit: 'kg', stock: 20, threshold: 5 },
+  { id: 'inv7', name: 'Salmon Fillet', unit: 'pcs', stock: 15, threshold: 3 },
+  { id: 'inv8', name: 'Steak', unit: 'pcs', stock: 12, threshold: 3 },
+];
+
+const INITIAL_DISHES: Dish[] = [
+  { id: 'd1', categoryId: 'c1', name: 'Garlic Bread', price: 6.50, available: true, description: 'Toasted baguette with garlic butter' },
+  { id: 'd2', categoryId: 'c1', name: 'Calamari', price: 12.00, available: true, description: 'Crispy fried squid with tartar sauce' },
+  { id: 'd3', categoryId: 'c2', name: 'Grilled Salmon', price: 24.00, available: true, description: 'Fresh atlantic salmon with asparagus', recipe: [{ inventoryItemId: 'inv7', quantity: 1 }] },
+  { id: 'd4', categoryId: 'c2', name: 'Ribeye Steak', price: 32.00, available: true, description: '300g premium beef with chips', recipe: [{ inventoryItemId: 'inv8', quantity: 1 }, { inventoryItemId: 'inv6', quantity: 0.2 }] },
+  { 
+    id: 'd5', 
+    categoryId: 'c3', 
+    name: 'Classic Cheeseburger', 
+    price: 16.00, 
+    available: true, 
+    description: 'Beef patty, cheddar, lettuce, tomato', 
+    modifiers: BURGER_MODIFIERS,
+    recipe: [
+      { inventoryItemId: 'inv1', quantity: 1 },
+      { inventoryItemId: 'inv2', quantity: 1 },
+      { inventoryItemId: 'inv3', quantity: 1 },
+      { inventoryItemId: 'inv4', quantity: 0.1 },
+      { inventoryItemId: 'inv5', quantity: 0.1 }
+    ]
+  },
+  { id: 'd6', categoryId: 'c3', name: 'Vegan Burger', price: 18.00, available: true, description: 'Plant-based patty with avocado', modifiers: BURGER_MODIFIERS },
+  { id: 'd7', categoryId: 'c4', name: 'Cola', price: 4.00, available: true },
+  { id: 'd8', categoryId: 'c4', name: 'Craft Beer', price: 8.00, available: true },
+  { id: 'd9', categoryId: 'c5', name: 'Cheesecake', price: 9.00, available: true, description: 'New York style' },
+];
+
+const INITIAL_TABLES: Table[] = Array.from({ length: 12 }, (_, i) => ({
+  id: `t${i + 1}`,
+  name: `Table ${i + 1}`,
+  status: 'available',
+  seats: i < 6 ? 2 : 4,
+}));
+
+// --- STATE STORE ---
+
+type AppState = {
+  user: User | null;
+  categories: Category[];
+  dishes: Dish[];
+  tables: Table[];
+  orders: Order[];
+  inventory: InventoryItem[];
+};
+
+type Action = 
+  | { type: 'LOGIN'; payload: User }
+  | { type: 'LOGOUT' }
+  | { type: 'ADD_ORDER'; payload: Order }
+  | { type: 'UPDATE_ORDER_STATUS'; payload: { orderId: string; status: Order['status'] } }
+  | { type: 'UPDATE_ORDER_ITEM_STATUS'; payload: { orderId: string; itemId: string; status: OrderItem['status'] } }
+  | { type: 'UPDATE_TABLE_STATUS'; payload: { tableId: string; status: Table['status'] } }
+  | { type: 'ADD_DISH'; payload: Dish }
+  | { type: 'UPDATE_DISH'; payload: Dish }
+  | { type: 'DELETE_DISH'; payload: string }
+  | { type: 'TOGGLE_DISH_AVAILABILITY'; payload: string }
+  | { type: 'UPDATE_INVENTORY'; payload: { itemId: string; newStock: number } }
+  | { type: 'ADD_INVENTORY_ITEM'; payload: InventoryItem }
+  | { type: 'CONSUME_INVENTORY'; payload: { items: OrderItem[] } };
+
+const initialState: AppState = {
+  user: null,
+  categories: INITIAL_CATEGORIES,
+  dishes: INITIAL_DISHES,
+  tables: INITIAL_TABLES,
+  orders: [],
+  inventory: INITIAL_INVENTORY,
+};
+
+const reducer = (state: AppState, action: Action): AppState => {
+  switch (action.type) {
+    case 'LOGIN': return { ...state, user: action.payload };
+    case 'LOGOUT': return { ...state, user: null };
+    case 'ADD_ORDER': return { ...state, orders: [action.payload, ...state.orders] };
+    case 'UPDATE_ORDER_STATUS':
+      return {
+        ...state,
+        orders: state.orders.map(o => o.id === action.payload.orderId ? { ...o, status: action.payload.status } : o)
+      };
+    case 'UPDATE_ORDER_ITEM_STATUS':
+      return {
+        ...state,
+        orders: state.orders.map(o => {
+          if (o.id !== action.payload.orderId) return o;
+          const updatedItems = o.items.map(item => 
+            item.id === action.payload.itemId ? { ...item, status: action.payload.status } : item
+          );
+          // Check if all items are ready to auto-update order status
+          const allReady = updatedItems.every(i => i.status === 'ready' || i.status === 'served');
+          return { ...o, items: updatedItems, status: allReady ? 'ready' : o.status };
+        })
+      };
+    case 'UPDATE_TABLE_STATUS':
+      return {
+        ...state,
+        tables: state.tables.map(t => t.id === action.payload.tableId ? { ...t, status: action.payload.status } : t)
+      };
+    case 'ADD_DISH': return { ...state, dishes: [...state.dishes, action.payload] };
+    case 'UPDATE_DISH': 
+      return { ...state, dishes: state.dishes.map(d => d.id === action.payload.id ? action.payload : d) };
+    case 'DELETE_DISH':
+      return { ...state, dishes: state.dishes.filter(d => d.id !== action.payload) };
+    case 'TOGGLE_DISH_AVAILABILITY':
+      return {
+        ...state,
+        dishes: state.dishes.map(d => d.id === action.payload ? { ...d, available: !d.available } : d)
+      };
+    case 'UPDATE_INVENTORY':
+      return {
+        ...state,
+        inventory: state.inventory.map(item => 
+          item.id === action.payload.itemId ? { ...item, stock: action.payload.newStock } : item
+        )
+      };
+    case 'ADD_INVENTORY_ITEM':
+      return { ...state, inventory: [...state.inventory, action.payload] };
+    case 'CONSUME_INVENTORY': {
+      const newInventory = [...state.inventory];
+      action.payload.items.forEach(orderItem => {
+        const dish = state.dishes.find(d => d.id === orderItem.dishId);
+        if (dish && dish.recipe) {
+          dish.recipe.forEach(ingredient => {
+            const invItem = newInventory.find(i => i.id === ingredient.inventoryItemId);
+            if (invItem) {
+              invItem.stock = Math.max(0, invItem.stock - (ingredient.quantity * orderItem.qty));
+            }
+          });
+        }
+      });
+      return { ...state, inventory: newInventory };
+    }
+    default: return state;
+  }
+};
+
+const StoreContext = createContext<{
+  state: AppState;
+  dispatch: React.Dispatch<Action>;
+}>({ state: initialState, dispatch: () => null });
+
+// --- HELPERS ---
+
+const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+
+const areModifiersEqual = (mods1: Modifier[], mods2: Modifier[]) => {
+  if (mods1.length !== mods2.length) return false;
+  const ids1 = mods1.map(m => m.id).sort();
+  const ids2 = mods2.map(m => m.id).sort();
+  return ids1.every((id, index) => id === ids2[index]);
+};
+
+// --- COMPONENTS ---
+
+const Button = ({ children, variant = 'primary', className = '', ...props }: any) => {
+  const base = "px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed";
+  const variants = {
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
+    secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100",
+    success: "bg-green-600 text-white hover:bg-green-700",
+    ghost: "text-slate-600 hover:bg-slate-100",
+  };
+  return (
+    <button className={`${base} ${variants[variant as keyof typeof variants]} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+};
+
+const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AddDishModal = ({ isOpen, onClose, dishToEdit }: { isOpen: boolean; onClose: () => void; dishToEdit?: Dish }) => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [formData, setFormData] = useState<Partial<Dish>>({
+    name: '',
+    categoryId: INITIAL_CATEGORIES[0].id,
+    price: 0,
+    description: '',
+    available: true
+  });
+
+  useEffect(() => {
+    if (dishToEdit) {
+      setFormData(dishToEdit);
+    } else {
+      setFormData({
+        name: '',
+        categoryId: state.categories[0]?.id || INITIAL_CATEGORIES[0].id,
+        price: 0,
+        description: '',
+        available: true
+      });
+    }
+  }, [dishToEdit, isOpen, state.categories]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (dishToEdit) {
+      dispatch({ type: 'UPDATE_DISH', payload: { ...dishToEdit, ...formData } as Dish });
+    } else {
+      dispatch({ 
+        type: 'ADD_DISH', 
+        payload: { ...formData, id: Date.now().toString(), modifiers: [], recipe: [] } as Dish 
+      });
+    }
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={dishToEdit ? "Edit Dish" : "Add New Dish"}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+          <input 
+            required 
+            type="text" 
+            className="w-full border rounded-lg p-2"
+            value={formData.name || ''}
+            onChange={e => setFormData({ ...formData, name: e.target.value })} 
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+          <select 
+            className="w-full border rounded-lg p-2"
+            value={formData.categoryId}
+            onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+          >
+            {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Price</label>
+          <input 
+            required 
+            type="number" 
+            step="0.01"
+            className="w-full border rounded-lg p-2"
+            value={formData.price || 0}
+            onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) })} 
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <textarea 
+            className="w-full border rounded-lg p-2"
+            value={formData.description || ''}
+            onChange={e => setFormData({ ...formData, description: e.target.value })} 
+          />
+        </div>
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
+          <Button type="submit">Save</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const AddInventoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  const { dispatch } = useContext(StoreContext);
+  const [formData, setFormData] = useState<Partial<InventoryItem>>({
+    name: '',
+    unit: 'pcs',
+    stock: 0,
+    threshold: 5
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    dispatch({ 
+      type: 'ADD_INVENTORY_ITEM', 
+      payload: { ...formData, id: Date.now().toString() } as InventoryItem 
+    });
+    setFormData({ name: '', unit: 'pcs', stock: 0, threshold: 5 });
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Add Inventory Item">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Item Name</label>
+          <input 
+            required 
+            type="text" 
+            className="w-full border rounded-lg p-2"
+            value={formData.name || ''}
+            onChange={e => setFormData({ ...formData, name: e.target.value })} 
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Unit</label>
+          <input 
+            required 
+            type="text" 
+            placeholder="e.g., kg, pcs, box"
+            className="w-full border rounded-lg p-2"
+            value={formData.unit || ''}
+            onChange={e => setFormData({ ...formData, unit: e.target.value })} 
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Initial Stock</label>
+            <input 
+              required 
+              type="number" 
+              className="w-full border rounded-lg p-2"
+              value={formData.stock || 0}
+              onChange={e => setFormData({ ...formData, stock: parseFloat(e.target.value) })} 
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Low Threshold</label>
+            <input 
+              required 
+              type="number" 
+              className="w-full border rounded-lg p-2"
+              value={formData.threshold || 0}
+              onChange={e => setFormData({ ...formData, threshold: parseFloat(e.target.value) })} 
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
+          <Button type="submit">Add Item</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// --- VIEWS ---
+
+const LoginView = () => {
+  const { dispatch } = useContext(StoreContext);
+  
+  const handleLogin = (role: Role, name: string) => {
+    dispatch({ 
+      type: 'LOGIN', 
+      payload: { id: Date.now().toString(), name, role } 
+    });
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="bg-indigo-600 p-8 text-center">
+          <h1 className="text-3xl font-bold text-white mb-2">OmniDine</h1>
+          <p className="text-indigo-100">Restaurant Management System</p>
+        </div>
+        <div className="p-8 space-y-4">
+          <p className="text-slate-600 text-center mb-6">Select a demo role to continue:</p>
+          <div className="grid grid-cols-1 gap-3">
+            <Button variant="secondary" onClick={() => handleLogin('admin', 'Alice Admin')} className="w-full justify-start text-lg h-14">
+              <LayoutDashboard className="w-5 h-5 mr-3 text-indigo-600" /> Admin / Manager
+            </Button>
+            <Button variant="secondary" onClick={() => handleLogin('waiter', 'Bob Server')} className="w-full justify-start text-lg h-14">
+              <UtensilsCrossed className="w-5 h-5 mr-3 text-emerald-600" /> Waiter (POS)
+            </Button>
+            <Button variant="secondary" onClick={() => handleLogin('chef', 'Charlie Chef')} className="w-full justify-start text-lg h-14">
+              <ChefHat className="w-5 h-5 mr-3 text-orange-600" /> Kitchen (KDS)
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Sidebar = () => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  const menuItems = [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'manager'] },
+    { id: 'pos', icon: ShoppingBag, label: 'POS', roles: ['admin', 'manager', 'waiter'] },
+    { id: 'kds', icon: ChefHat, label: 'Kitchen', roles: ['admin', 'manager', 'chef'] },
+    { id: 'tables', icon: Users, label: 'Tables', roles: ['admin', 'manager', 'waiter'] },
+    { id: 'menu', icon: MenuIcon, label: 'Menu', roles: ['admin', 'manager'] },
+    { id: 'inventory', icon: Package, label: 'Inventory', roles: ['admin', 'manager', 'chef'] },
+  ];
+
+  return (
+    <>
+      <div className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 z-20">
+        <div className="p-6 border-b border-slate-800">
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <span className="bg-indigo-600 w-8 h-8 rounded-lg flex items-center justify-center">O</span>
+            OmniDine
+          </h2>
+        </div>
+        
+        <nav className="flex-1 p-4 space-y-2">
+          {menuItems.filter(item => item.roles.includes(state.user?.role || '')).map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                activeTab === item.id 
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20' 
+                  : 'hover:bg-slate-800'
+              }`}
+            >
+              <item.icon className="w-5 h-5" />
+              <span className="font-medium">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t border-slate-800">
+          <div className="flex items-center gap-3 px-4 py-3 mb-2">
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-white">
+              {state.user?.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{state.user?.name}</p>
+              <p className="text-xs text-slate-500 capitalize">{state.user?.role}</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => dispatch({ type: 'LOGOUT' })}
+            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors"
+          >
+            <LogOut className="w-4 h-4" /> Sign Out
+          </button>
+        </div>
+      </div>
+
+      <div className="fixed left-64 top-0 right-0 bottom-0 overflow-auto bg-slate-50 text-slate-900">
+        {activeTab === 'dashboard' && <DashboardView />}
+        {activeTab === 'pos' && <POSView />}
+        {activeTab === 'kds' && <KDSView />}
+        {activeTab === 'tables' && <TablesView />}
+        {activeTab === 'menu' && <MenuManagementView />}
+        {activeTab === 'inventory' && <InventoryView />}
+      </div>
+    </>
+  );
+};
+
+// --- SUB-VIEWS ---
+
+const DashboardView = () => {
+  const { state } = useContext(StoreContext);
+  
+  const todayOrders = state.orders.filter(o => new Date(o.createdAt).getDate() === new Date().getDate());
+  const totalRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
+  const activeTables = state.tables.filter(t => t.status === 'occupied').length;
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1">Overview of restaurant performance today.</p>
+        </div>
+        <span className="text-sm text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200">
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-green-50 rounded-xl">
+              <DollarSign className="w-6 h-6 text-green-600" />
+            </div>
+            <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">+12.5%</span>
+          </div>
+          <h3 className="text-slate-500 text-sm font-medium">Total Revenue</h3>
+          <p className="text-3xl font-bold text-slate-900 mt-1">{formatCurrency(totalRevenue)}</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-indigo-50 rounded-xl">
+              <ShoppingBag className="w-6 h-6 text-indigo-600" />
+            </div>
+            <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">New</span>
+          </div>
+          <h3 className="text-slate-500 text-sm font-medium">Orders Today</h3>
+          <p className="text-3xl font-bold text-slate-900 mt-1">{todayOrders.length}</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-orange-50 rounded-xl">
+              <Users className="w-6 h-6 text-orange-600" />
+            </div>
+            <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-full">{state.tables.length} Total</span>
+          </div>
+          <h3 className="text-slate-500 text-sm font-medium">Active Tables</h3>
+          <p className="text-3xl font-bold text-slate-900 mt-1">{activeTables}</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-900">Recent Activity</h3>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {state.orders.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">No orders yet. Go to POS to create one.</div>
+          ) : (
+            state.orders.slice(0, 5).map(order => (
+              <div key={order.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                    <UtensilsCrossed className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Order #{order.id.slice(-4)}</p>
+                    <p className="text-xs text-slate-500">Table {state.tables.find(t => t.id === order.tableId)?.name} • {order.items.length} items</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-slate-900">{formatCurrency(order.total)}</p>
+                  <p className="text-xs text-slate-500 capitalize">{order.status}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const POSView = () => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [selectedCategory, setSelectedCategory] = useState(INITIAL_CATEGORIES[0].id);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [cart, setCart] = useState<OrderItem[]>([]);
+  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'cart' | 'active'>('cart');
+  
+  // Modals state
+  const [modifyingDish, setModifyingDish] = useState<Dish | null>(null);
+  const [selectedModifiers, setSelectedModifiers] = useState<Modifier[]>([]);
+  const [showOrderConfirmation, setShowOrderConfirmation] = useState(false);
+  
+  // Cart Editing State
+  const [editingCartItem, setEditingCartItem] = useState<OrderItem | null>(null);
+
+  // When clicking a dish in the menu
+  const initiateAddToCart = (dish: Dish) => {
+    if (dish.modifiers && dish.modifiers.length > 0) {
+      setModifyingDish(dish);
+      setSelectedModifiers([]);
+    } else {
+      addToCart(dish, []);
+    }
+  };
+
+  const toggleModifier = (modifier: Modifier) => {
+    if (selectedModifiers.find(m => m.id === modifier.id)) {
+      setSelectedModifiers(prev => prev.filter(m => m.id !== modifier.id));
+    } else {
+      setSelectedModifiers(prev => [...prev, modifier]);
+    }
+  };
+  
+  const toggleEditorModifier = (modifier: Modifier) => {
+    if (!editingCartItem) return;
+    const currentMods = editingCartItem.modifiers;
+    const exists = currentMods.find(m => m.id === modifier.id);
+    let newMods;
+    if (exists) {
+      newMods = currentMods.filter(m => m.id !== modifier.id);
+    } else {
+      newMods = [...currentMods, modifier];
+    }
+    const modifiersCost = newMods.reduce((sum, m) => sum + m.price, 0);
+    const baseDish = state.dishes.find(d => d.id === editingCartItem.dishId);
+    if (!baseDish) return;
+
+    setEditingCartItem({
+      ...editingCartItem,
+      modifiers: newMods,
+      price: baseDish.price + modifiersCost
+    });
+  };
+
+  const confirmModifiers = () => {
+    if (modifyingDish) {
+      addToCart(modifyingDish, selectedModifiers);
+      setModifyingDish(null);
+      setSelectedModifiers([]);
+    }
+  };
+
+  const addToCart = (dish: Dish, modifiers: Modifier[]) => {
+    setCart(prev => {
+      // Find item with same dishId AND same modifiers
+      const existing = prev.find(i => i.dishId === dish.id && areModifiersEqual(i.modifiers, modifiers));
+      
+      if (existing) {
+        return prev.map(i => i.id === existing.id ? { ...i, qty: i.qty + 1 } : i);
+      }
+      
+      const modifiersCost = modifiers.reduce((sum, m) => sum + m.price, 0);
+      return [...prev, { 
+        id: Date.now().toString() + Math.random(), 
+        dishId: dish.id, 
+        name: dish.name, 
+        price: dish.price + modifiersCost, 
+        modifiers: modifiers,
+        qty: 1, 
+        status: 'pending' 
+      }];
+    });
+    setViewMode('cart');
+  };
+
+  const updateQty = (itemId: string, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.id === itemId) {
+        return { ...item, qty: Math.max(0, item.qty + delta) };
+      }
+      return item;
+    }).filter(item => item.qty > 0));
+  };
+  
+  const updateEditorQty = (delta: number) => {
+    if(!editingCartItem) return;
+    setEditingCartItem({
+      ...editingCartItem,
+      qty: Math.max(1, editingCartItem.qty + delta)
+    });
+  };
+  
+  const saveCartItemChanges = () => {
+    if (!editingCartItem) return;
+    setCart(prev => prev.map(item => item.id === editingCartItem.id ? editingCartItem : item));
+    setEditingCartItem(null);
+  };
+  
+  const deleteCartItem = () => {
+    if (!editingCartItem) return;
+    setCart(prev => prev.filter(item => item.id !== editingCartItem.id));
+    setEditingCartItem(null);
+  }
+
+  const handlePlaceOrderClick = () => {
+    if (!selectedTable || cart.length === 0) return;
+    setShowOrderConfirmation(true);
+  };
+
+  const finalizeOrder = () => {
+    if (!selectedTable || cart.length === 0) return;
+    
+    const total = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
+    const order: Order = {
+      id: Date.now().toString(),
+      tableId: selectedTable,
+      serverName: state.user?.name || 'Unknown',
+      items: cart,
+      status: 'pending', // Starts as pending, moves to preparing when KDS picks it up
+      total,
+      createdAt: new Date()
+    };
+
+    dispatch({ type: 'ADD_ORDER', payload: order });
+    dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: selectedTable, status: 'occupied' } });
+    
+    // Reset
+    setCart([]);
+    setShowOrderConfirmation(false);
+    setViewMode('active');
+  };
+
+  const filteredDishes = state.dishes.filter(d => 
+    d.categoryId === selectedCategory && 
+    d.available &&
+    d.name.toLowerCase().includes(search.toLowerCase())
+  );
+  
+  const editingBaseDish = editingCartItem ? state.dishes.find(d => d.id === editingCartItem.dishId) : null;
+  
+  // Active orders for selected table
+  const activeOrders = selectedTable 
+    ? state.orders.filter(o => o.tableId === selectedTable && o.status !== 'paid' && o.status !== 'completed')
+    : [];
+
+  return (
+    <div className="flex h-screen pt-4"> 
+      {/* Confirmation Modal */}
+      <Modal 
+        isOpen={showOrderConfirmation} 
+        onClose={() => setShowOrderConfirmation(false)} 
+        title="Confirm Order"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 text-amber-600 bg-amber-50 p-3 rounded-lg">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm">Please verify the order details before sending to the kitchen.</p>
+          </div>
+          
+          <div className="border rounded-lg p-3 bg-slate-50 space-y-2 max-h-48 overflow-y-auto">
+            {cart.map(item => (
+              <div key={item.id} className="flex justify-between text-sm">
+                <span>{item.qty}x {item.name}</span>
+                <span className="font-mono">{formatCurrency(item.price * item.qty)}</span>
+              </div>
+            ))}
+            <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
+              <span>Total</span>
+              <span>{formatCurrency(cart.reduce((acc, item) => acc + (item.price * item.qty), 0))}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <Button variant="ghost" onClick={() => setShowOrderConfirmation(false)} className="flex-1">
+              Cancel
+            </Button>
+            <Button onClick={finalizeOrder} className="flex-1">
+              Confirm & Send
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modifier Selection Modal */}
+      <Modal
+        isOpen={!!modifyingDish}
+        onClose={() => setModifyingDish(null)}
+        title={modifyingDish ? `Customize ${modifyingDish.name}` : ''}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">Select options for this item:</p>
+          <div className="space-y-2">
+            {modifyingDish?.modifiers?.map(modifier => (
+              <label key={modifier.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-slate-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                    checked={selectedModifiers.some(m => m.id === modifier.id)}
+                    onChange={() => toggleModifier(modifier)}
+                  />
+                  <span className="text-slate-700">{modifier.name}</span>
+                </div>
+                {modifier.price > 0 && (
+                  <span className="text-sm text-slate-500">+{formatCurrency(modifier.price)}</span>
+                )}
+              </label>
+            ))}
+          </div>
+          <div className="pt-4 flex gap-3">
+             <Button variant="ghost" onClick={() => setModifyingDish(null)} className="flex-1">
+              Cancel
+            </Button>
+            <Button onClick={confirmModifiers} className="flex-1">
+              Add to Order - {formatCurrency((modifyingDish?.price || 0) + selectedModifiers.reduce((s, m) => s + m.price, 0))}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Cart Item Edit Modal */}
+      <Modal 
+        isOpen={!!editingCartItem} 
+        onClose={() => setEditingCartItem(null)} 
+        title="Edit Item"
+      >
+        {editingCartItem && editingBaseDish && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-xl">{editingCartItem.name}</h3>
+              <div className="flex items-center gap-3">
+                 <button onClick={() => updateEditorQty(-1)} className="p-2 rounded bg-slate-100 hover:bg-slate-200"><Minus className="w-4 h-4"/></button>
+                 <span className="font-bold text-lg">{editingCartItem.qty}</span>
+                 <button onClick={() => updateEditorQty(1)} className="p-2 rounded bg-slate-100 hover:bg-slate-200"><Plus className="w-4 h-4"/></button>
+              </div>
+            </div>
+
+            {editingBaseDish.modifiers && editingBaseDish.modifiers.length > 0 && (
+              <div className="space-y-2">
+                 <p className="text-sm font-semibold text-slate-600">Modifiers</p>
+                 {editingBaseDish.modifiers.map(modifier => (
+                    <label key={modifier.id} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50 cursor-pointer">
+                      <div className="flex items-center gap-2">
+                         <input 
+                            type="checkbox"
+                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                            checked={editingCartItem.modifiers.some(m => m.id === modifier.id)}
+                            onChange={() => toggleEditorModifier(modifier)}
+                         />
+                         <span>{modifier.name}</span>
+                      </div>
+                      <span className="text-xs text-slate-500">+{formatCurrency(modifier.price)}</span>
+                    </label>
+                 ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4 border-t">
+              <Button variant="danger" onClick={deleteCartItem} className="flex-1">
+                <Trash2 className="w-4 h-4" /> Remove
+              </Button>
+              <Button onClick={saveCartItemChanges} className="flex-1">
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Left Side: Menu */}
+      <div className="flex-1 flex flex-col h-full bg-slate-50 border-r border-slate-200">
+        <div className="p-6 pb-2">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold text-slate-900">New Order</h1>
+            <input 
+              type="text" 
+              placeholder="Search dishes..." 
+              className="bg-white border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">
+            {state.categories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all ${
+                  selectedCategory === cat.id 
+                    ? 'bg-slate-900 text-white shadow-md' 
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 pt-0">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredDishes.map(dish => (
+              <button
+                key={dish.id}
+                onClick={() => initiateAddToCart(dish)}
+                className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all text-left flex flex-col h-32 justify-between group"
+              >
+                <div className="flex justify-between items-start w-full">
+                  <span className="font-semibold text-slate-900 group-hover:text-indigo-600 line-clamp-2">{dish.name}</span>
+                </div>
+                <div>
+                  <span className="text-lg font-bold text-slate-700">{formatCurrency(dish.price)}</span>
+                  {dish.modifiers && dish.modifiers.length > 0 && (
+                     <span className="block text-xs text-slate-400 mt-1">Customizable</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right Side: Cart / Active Orders */}
+      <div className="w-96 bg-white shadow-xl flex flex-col h-full z-10 border-l border-slate-200">
+        <div className="p-6 border-b border-slate-100 bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Current Table</h2>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {state.tables.map(table => (
+              <button
+                key={table.id}
+                onClick={() => { setSelectedTable(table.id); if(cart.length === 0) setViewMode('active'); }}
+                className={`p-2 rounded-lg text-xs font-medium border transition-all ${
+                  selectedTable === table.id
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : table.status === 'occupied' 
+                      ? 'bg-orange-50 text-orange-600 border-orange-200'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                }`}
+              >
+                {table.name}
+              </button>
+            ))}
+          </div>
+          
+          {selectedTable && (
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
+              <button 
+                onClick={() => setViewMode('cart')}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${viewMode === 'cart' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Cart ({cart.length})
+              </button>
+              <button 
+                 onClick={() => setViewMode('active')}
+                 className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${viewMode === 'active' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Active ({activeOrders.reduce((sum, o) => sum + o.items.length, 0)})
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {!selectedTable ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
+              <Users className="w-12 h-12 opacity-20" />
+              <p>Select a table to start</p>
+            </div>
+          ) : viewMode === 'cart' ? (
+            cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
+                <ShoppingBag className="w-12 h-12 opacity-20" />
+                <p>Cart is empty</p>
+              </div>
+            ) : (
+              cart.map(item => (
+                <div 
+                  key={item.id} 
+                  className="flex items-center justify-between group p-2 -mx-2 rounded-lg transition-colors hover:bg-slate-50"
+                >
+                  <div className="flex-1 cursor-pointer" onClick={() => setEditingCartItem(item)}>
+                    <p className="font-medium text-slate-900">{item.name}</p>
+                    {item.modifiers && item.modifiers.length > 0 && (
+                      <p className="text-xs text-slate-500">
+                        + {item.modifiers.map(m => m.name).join(', ')}
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-500">{formatCurrency(item.price)}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); updateQty(item.id, -1); }}
+                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="w-4 text-center text-sm font-medium">{item.qty}</span>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); updateQty(item.id, 1); }}
+                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )
+          ) : (
+             activeOrders.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
+                  <Clock className="w-12 h-12 opacity-20" />
+                  <p>No active orders</p>
+                </div>
+             ) : (
+                <div className="space-y-6">
+                  {activeOrders.map(order => (
+                     <div key={order.id} className="border-b border-slate-100 pb-4 last:border-0">
+                        <div className="flex justify-between items-center mb-2">
+                           <span className="text-xs font-bold text-slate-500">Order #{order.id.slice(-4)}</span>
+                           <span className={`text-xs px-2 py-0.5 rounded-full ${order.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{order.status}</span>
+                        </div>
+                        <div className="space-y-2">
+                           {order.items.map(item => (
+                              <div key={item.id} className="flex justify-between items-start text-sm">
+                                 <div>
+                                    <span className="font-medium text-slate-900">{item.qty}x {item.name}</span>
+                                    {item.modifiers.length > 0 && (
+                                       <p className="text-xs text-slate-500"> + {item.modifiers.map(m => m.name).join(', ')}</p>
+                                    )}
+                                 </div>
+                                 <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${
+                                    item.status === 'ready' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    item.status === 'preparing' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    'bg-slate-50 text-slate-500 border-slate-200'
+                                 }`}>
+                                    {item.status}
+                                 </span>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  ))}
+                </div>
+             )
+          )}
+        </div>
+
+        {viewMode === 'cart' && (
+          <div className="p-6 bg-slate-50 border-t border-slate-200">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-slate-600">Total</span>
+              <span className="text-2xl font-bold text-slate-900">
+                {formatCurrency(cart.reduce((acc, item) => acc + (item.price * item.qty), 0))}
+              </span>
+            </div>
+            <Button 
+              className="w-full py-3 text-lg" 
+              disabled={!selectedTable || cart.length === 0}
+              onClick={handlePlaceOrderClick}
+            >
+              Place Order
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const KDSView = () => {
+  const { state, dispatch } = useContext(StoreContext);
+  const activeOrders = state.orders.filter(o => ['pending', 'preparing', 'ready'].includes(o.status));
+
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold text-slate-900 mb-8">Kitchen Display System</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {activeOrders.map(order => (
+          <div key={order.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col ${
+            order.status === 'ready' ? 'border-green-500 ring-1 ring-green-500' : 'border-slate-200'
+          }`}>
+            <div className={`p-4 border-b ${
+              order.status === 'ready' ? 'bg-green-50' : 'bg-slate-50'
+            } flex justify-between items-start`}>
+              <div>
+                <h3 className="font-bold text-slate-900">Order #{order.id.slice(-4)}</h3>
+                <p className="text-sm text-slate-500">Table {state.tables.find(t => t.id === order.tableId)?.name}</p>
+                <p className="text-xs text-slate-400 mt-1">{new Date(order.createdAt).toLocaleTimeString()}</p>
+              </div>
+              <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                order.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+              }`}>
+                {order.status}
+              </span>
+            </div>
+            <div className="p-4 flex-1 space-y-3">
+              {order.items.map(item => (
+                <div key={item.id} className="flex justify-between items-start">
+                  <div className="flex gap-3">
+                    <span className="font-bold text-slate-700">{item.qty}x</span>
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                      {item.modifiers.length > 0 && (
+                        <p className="text-xs text-slate-500">
+                          + {item.modifiers.map(m => m.name).join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                        let nextStatus: OrderItem['status'] = 'pending';
+                        if (item.status === 'pending') nextStatus = 'preparing';
+                        else if (item.status === 'preparing') nextStatus = 'ready';
+                        dispatch({ type: 'UPDATE_ORDER_ITEM_STATUS', payload: { orderId: order.id, itemId: item.id, status: nextStatus }});
+                        
+                        // Inventory trigger
+                        if (nextStatus === 'preparing') {
+                            dispatch({ type: 'CONSUME_INVENTORY', payload: { items: [item] } });
+                        }
+                    }}
+                    className={`text-xs px-2 py-1 rounded border capitalize transition-colors ${
+                      item.status === 'ready' ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                      item.status === 'preparing' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                      'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    {item.status}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50">
+              {order.status !== 'ready' ? (
+                <Button 
+                  className="w-full" 
+                  onClick={() => {
+                      dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId: order.id, status: 'ready' } });
+                      // Mark all items ready if not already
+                      order.items.forEach(item => {
+                          if (item.status !== 'ready' && item.status !== 'served') {
+                              dispatch({ type: 'UPDATE_ORDER_ITEM_STATUS', payload: { orderId: order.id, itemId: item.id, status: 'ready' }});
+                          }
+                      });
+                  }}
+                >
+                  Mark All Ready
+                </Button>
+              ) : (
+                <Button 
+                  variant="success"
+                  className="w-full"
+                  onClick={() => dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId: order.id, status: 'completed' } })}
+                >
+                  Complete Order
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+        {activeOrders.length === 0 && (
+          <div className="col-span-full text-center py-20 text-slate-400">
+            <ChefHat className="w-16 h-16 mx-auto mb-4 opacity-20" />
+            <p className="text-lg">No active orders</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const TablesView = () => {
+  const { state, dispatch } = useContext(StoreContext);
+
+  const handleTableClick = (table: Table) => {
+    if (table.status === 'occupied') {
+       if (confirm(`Clear ${table.name}? This will mark it as available.`)) {
+         dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: table.id, status: 'available' } });
+       }
+    }
+  };
+
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold text-slate-900 mb-8">Tables</h1>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+        {state.tables.map(table => (
+          <div 
+            key={table.id}
+            onClick={() => handleTableClick(table)}
+            className={`aspect-square rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer transition-all border-2 ${
+              table.status === 'occupied' 
+                ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' 
+                : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:shadow-md'
+            }`}
+          >
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+              table.status === 'occupied' ? 'bg-orange-100' : 'bg-slate-100'
+            }`}>
+              <Users className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold mb-1">{table.name}</h3>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+               table.status === 'occupied' ? 'bg-white/50' : 'bg-slate-100'
+            }`}>
+              {table.status}
+            </span>
+            <p className="mt-2 text-xs opacity-70">{table.seats} Seats</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const MenuManagementView = () => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingDish, setEditingDish] = useState<Dish | undefined>(undefined);
+
+  const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm('Are you sure you want to delete this dish?')) {
+      dispatch({ type: 'DELETE_DISH', payload: id });
+    }
+  };
+
+  const openEdit = (dish: Dish) => {
+    setEditingDish(dish);
+    setIsModalOpen(true);
+  };
+
+  const openAdd = () => {
+    setEditingDish(undefined);
+    setIsModalOpen(true);
+  };
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto">
+      <AddDishModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        dishToEdit={editingDish} 
+      />
+      
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-slate-900">Menu Management</h1>
+        <Button onClick={openAdd}>
+          <Plus className="w-4 h-4" /> Add New Dish
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Dish Name</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Category</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Price</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Status</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {state.dishes.map(dish => (
+              <tr key={dish.id} className="hover:bg-slate-50">
+                <td className="p-4 font-medium text-slate-900">{dish.name}</td>
+                <td className="p-4 text-slate-600">
+                  {state.categories.find(c => c.id === dish.categoryId)?.name}
+                </td>
+                <td className="p-4 text-slate-600">{formatCurrency(dish.price)}</td>
+                <td className="p-4">
+                  <button 
+                    onClick={() => dispatch({ type: 'TOGGLE_DISH_AVAILABILITY', payload: dish.id })}
+                    className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                      dish.available 
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
+                  >
+                    {dish.available ? <CheckCircle className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                    {dish.available ? 'Available' : 'Unavailable'}
+                  </button>
+                </td>
+                <td className="p-4">
+                  <div className="flex justify-end gap-2">
+                    <button 
+                      onClick={() => openEdit(dish)}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => handleDelete(e, dish.id)}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const InventoryView = () => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const updateStock = (itemId: string, newStock: number) => {
+    dispatch({ type: 'UPDATE_INVENTORY', payload: { itemId, newStock: Math.max(0, newStock) } });
+  };
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+      <AddInventoryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-slate-900">Inventory</h1>
+        <Button onClick={() => setIsModalOpen(true)}>
+          <Plus className="w-4 h-4" /> Add Item
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Item Name</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Current Stock</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Unit</th>
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {state.inventory.map(item => (
+              <tr key={item.id} className="hover:bg-slate-50">
+                <td className="p-4 font-medium text-slate-900">{item.name}</td>
+                <td className="p-4">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => updateStock(item.id, item.stock - 1)}
+                      className="p-1 rounded bg-slate-100 hover:bg-slate-200"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <input 
+                      type="number"
+                      value={item.stock}
+                      onChange={(e) => updateStock(item.id, parseFloat(e.target.value) || 0)}
+                      className="w-20 text-center border rounded p-1"
+                    />
+                    <button 
+                      onClick={() => updateStock(item.id, item.stock + 1)}
+                      className="p-1 rounded bg-slate-100 hover:bg-slate-200"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                </td>
+                <td className="p-4 text-slate-500">{item.unit}</td>
+                <td className="p-4">
+                  {item.stock <= item.threshold ? (
+                    <span className="flex items-center gap-1 text-red-600 text-sm font-medium">
+                      <AlertCircle className="w-4 h-4" /> Low Stock
+                    </span>
+                  ) : (
+                    <span className="text-green-600 text-sm font-medium">In Stock</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const App = () => {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Simulated WebSocket Effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+        // Randomly simulate an external event, like a reservation coming in
+        if (Math.random() > 0.8) {
+            const randomTableIdx = Math.floor(Math.random() * INITIAL_TABLES.length);
+            const tableId = `t${randomTableIdx + 1}`;
+            // Only update if current status is available (simulating new reservation)
+            const table = state.tables.find(t => t.id === tableId);
+            if (table && table.status === 'available') {
+                dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId, status: 'reserved' } });
+            }
+        }
+    }, 15000); // Check every 15 seconds
+
+    return () => clearInterval(interval);
+  }, [state.tables]);
+
+  return (
+    <StoreContext.Provider value={{ state, dispatch }}>
+      {state.user ? <Sidebar /> : <LoginView />}
+    </StoreContext.Provider>
+  );
+};
+
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
+}
