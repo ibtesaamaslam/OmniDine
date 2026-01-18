@@ -1427,18 +1427,20 @@ const TablesView = () => {
               table.status === 'occupied' 
                 ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' 
                 : table.status === 'reserved'
-                  ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
-                  : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:shadow-md'
+                  ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                  : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100 hover:shadow-md'
             }`}
           >
             <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
-              table.status === 'occupied' ? 'bg-orange-100' : table.status === 'reserved' ? 'bg-purple-100' : 'bg-slate-100'
+              table.status === 'occupied' ? 'bg-orange-100' : 
+              table.status === 'reserved' ? 'bg-red-100' : 
+              'bg-green-100'
             }`}>
               {table.status === 'reserved' ? <Clock className="w-8 h-8" /> : <Users className="w-8 h-8" />}
             </div>
             <h3 className="text-xl font-bold mb-1">{table.name}</h3>
             <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-               table.status !== 'available' ? 'bg-white/50' : 'bg-slate-100'
+               table.status !== 'available' ? 'bg-white/60' : 'bg-white/60'
             }`}>
               {table.status}
             </span>
@@ -1548,7 +1550,7 @@ const ReservationsView = () => {
                             <span className={`text-xs px-2 py-1 rounded font-bold uppercase ${
                                 table.status === 'available' ? 'bg-green-100 text-green-700' :
                                 table.status === 'occupied' ? 'bg-orange-100 text-orange-700' :
-                                'bg-purple-100 text-purple-700'
+                                'bg-red-100 text-red-700'
                             }`}>
                                 {table.status}
                             </span>
