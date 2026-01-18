@@ -196,6 +196,7 @@ type Action =
   | { type: 'TOGGLE_DISH_AVAILABILITY'; payload: string }
   | { type: 'UPDATE_INVENTORY'; payload: { itemId: string; newStock: number } }
   | { type: 'ADD_INVENTORY_ITEM'; payload: InventoryItem }
+  | { type: 'DELETE_INVENTORY_ITEM'; payload: string }
   | { type: 'CONSUME_INVENTORY'; payload: { items: OrderItem[] } }
   | { type: 'ADD_RESERVATION'; payload: Reservation }
   | { type: 'CANCEL_RESERVATION'; payload: string };
@@ -240,7 +241,7 @@ const reducer = (state: AppState, action: Action): AppState => {
       };
     case 'ADD_DISH': return { ...state, dishes: [...state.dishes, action.payload] };
     case 'UPDATE_DISH': 
-      return { ...state, dishes: state.dishes.map(d => d.id === action.payload ? action.payload : d) };
+      return { ...state, dishes: state.dishes.map(d => d.id === action.payload.id ? action.payload : d) };
     case 'DELETE_DISH':
       return { ...state, dishes: state.dishes.filter(d => d.id !== action.payload) };
     case 'TOGGLE_DISH_AVAILABILITY':
@@ -257,6 +258,8 @@ const reducer = (state: AppState, action: Action): AppState => {
       };
     case 'ADD_INVENTORY_ITEM':
       return { ...state, inventory: [...state.inventory, action.payload] };
+    case 'DELETE_INVENTORY_ITEM':
+      return { ...state, inventory: state.inventory.filter(i => i.id !== action.payload) };
     case 'CONSUME_INVENTORY': {
       const newInventory = [...state.inventory];
       action.payload.items.forEach(orderItem => {
@@ -1715,6 +1718,12 @@ const InventoryView = () => {
       dispatch({ type: 'UPDATE_INVENTORY', payload: { itemId, newStock } });
   };
 
+  const handleDelete = (itemId: string) => {
+    if(confirm("Are you sure you want to delete this item?")) {
+        dispatch({ type: 'DELETE_INVENTORY_ITEM', payload: itemId });
+    }
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <AddInventoryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
@@ -1739,11 +1748,19 @@ const InventoryView = () => {
                             <h3 className="font-bold text-slate-900">{item.name}</h3>
                             <p className="text-xs text-slate-500">Threshold: {item.threshold} {item.unit}</p>
                         </div>
-                        {isLow && (
-                            <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">
-                                <AlertCircle className="w-3 h-3" /> Low Stock
-                            </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {isLow && (
+                                <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">
+                                    <AlertCircle className="w-3 h-3" /> Low Stock
+                                </span>
+                            )}
+                            <button 
+                                onClick={() => handleDelete(item.id)}
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                     
                     <div className="flex items-end justify-between gap-4">
