@@ -21,7 +21,8 @@ import {
   Package,
   Edit,
   Save,
-  RefreshCw
+  RefreshCw,
+  Calendar
 } from 'lucide-react';
 
 // --- TYPES & INTERFACES ---
@@ -97,6 +98,17 @@ interface Table {
   seats: number;
 }
 
+interface Reservation {
+  id: string;
+  tableId: string;
+  customerName: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  guests: number;
+  contact?: string;
+  status: 'confirmed' | 'cancelled' | 'completed';
+}
+
 // --- MOCK DATA ---
 
 const INITIAL_CATEGORIES: Category[] = [
@@ -168,6 +180,7 @@ type AppState = {
   tables: Table[];
   orders: Order[];
   inventory: InventoryItem[];
+  reservations: Reservation[];
 };
 
 type Action = 
@@ -183,7 +196,9 @@ type Action =
   | { type: 'TOGGLE_DISH_AVAILABILITY'; payload: string }
   | { type: 'UPDATE_INVENTORY'; payload: { itemId: string; newStock: number } }
   | { type: 'ADD_INVENTORY_ITEM'; payload: InventoryItem }
-  | { type: 'CONSUME_INVENTORY'; payload: { items: OrderItem[] } };
+  | { type: 'CONSUME_INVENTORY'; payload: { items: OrderItem[] } }
+  | { type: 'ADD_RESERVATION'; payload: Reservation }
+  | { type: 'CANCEL_RESERVATION'; payload: string };
 
 const initialState: AppState = {
   user: null,
@@ -192,6 +207,7 @@ const initialState: AppState = {
   tables: INITIAL_TABLES,
   orders: [],
   inventory: INITIAL_INVENTORY,
+  reservations: [],
 };
 
 const reducer = (state: AppState, action: Action): AppState => {
@@ -256,6 +272,10 @@ const reducer = (state: AppState, action: Action): AppState => {
       });
       return { ...state, inventory: newInventory };
     }
+    case 'ADD_RESERVATION':
+      return { ...state, reservations: [...state.reservations, action.payload] };
+    case 'CANCEL_RESERVATION':
+      return { ...state, reservations: state.reservations.map(r => r.id === action.payload ? { ...r, status: 'cancelled' } : r) };
     default: return state;
   }
 };
@@ -475,6 +495,134 @@ const AddInventoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
   );
 };
 
+const AddReservationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [formData, setFormData] = useState<Partial<Reservation>>({
+    customerName: '',
+    guests: 2,
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+    tableId: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.tableId) {
+      alert("Please select a table.");
+      return;
+    }
+
+    const reservation: Reservation = {
+      id: Date.now().toString(),
+      tableId: formData.tableId || '',
+      customerName: formData.customerName || '',
+      guests: formData.guests || 2,
+      date: formData.date || '',
+      time: formData.time || '',
+      contact: formData.contact || '',
+      status: 'confirmed'
+    };
+
+    dispatch({ type: 'ADD_RESERVATION', payload: reservation });
+    
+    // If reserving for today and roughly now, set status to reserved
+    const now = new Date();
+    const isToday = formData.date === now.toISOString().split('T')[0];
+    if (isToday) {
+       dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: reservation.tableId, status: 'reserved' } });
+    }
+
+    onClose();
+    setFormData({
+      customerName: '',
+      guests: 2,
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      tableId: ''
+    });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="New Reservation">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
+          <input 
+            required 
+            type="text" 
+            className="w-full border rounded-lg p-2"
+            value={formData.customerName || ''}
+            onChange={e => setFormData({ ...formData, customerName: e.target.value })} 
+          />
+        </div>
+         <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Contact (Optional)</label>
+          <input 
+            type="text" 
+            className="w-full border rounded-lg p-2"
+            value={formData.contact || ''}
+            onChange={e => setFormData({ ...formData, contact: e.target.value })} 
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+            <input 
+              required 
+              type="date" 
+              className="w-full border rounded-lg p-2"
+              value={formData.date || ''}
+              onChange={e => setFormData({ ...formData, date: e.target.value })} 
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
+            <input 
+              required 
+              type="time" 
+              className="w-full border rounded-lg p-2"
+              value={formData.time || ''}
+              onChange={e => setFormData({ ...formData, time: e.target.value })} 
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Guests</label>
+            <input 
+              required 
+              type="number" 
+              min="1"
+              className="w-full border rounded-lg p-2"
+              value={formData.guests || 2}
+              onChange={e => setFormData({ ...formData, guests: parseInt(e.target.value) })} 
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Table</label>
+             <select 
+              required
+              className="w-full border rounded-lg p-2"
+              value={formData.tableId}
+              onChange={e => setFormData({ ...formData, tableId: e.target.value })}
+            >
+              <option value="">Select Table</option>
+              {state.tables.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.seats} seats) - {t.status}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
+          <Button type="submit">Create Reservation</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 // --- VIEWS ---
 
 const LoginView = () => {
@@ -521,6 +669,7 @@ const Sidebar = () => {
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'manager'] },
     { id: 'pos', icon: ShoppingBag, label: 'POS', roles: ['admin', 'manager', 'waiter'] },
     { id: 'kds', icon: ChefHat, label: 'Kitchen', roles: ['admin', 'manager', 'chef'] },
+    { id: 'reservations', icon: Calendar, label: 'Reservations', roles: ['admin', 'manager', 'waiter'] },
     { id: 'tables', icon: Users, label: 'Tables', roles: ['admin', 'manager', 'waiter'] },
     { id: 'menu', icon: MenuIcon, label: 'Menu', roles: ['admin', 'manager'] },
     { id: 'inventory', icon: Package, label: 'Inventory', roles: ['admin', 'manager', 'chef'] },
@@ -576,6 +725,7 @@ const Sidebar = () => {
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'pos' && <POSView />}
         {activeTab === 'kds' && <KDSView />}
+        {activeTab === 'reservations' && <ReservationsView />}
         {activeTab === 'tables' && <TablesView />}
         {activeTab === 'menu' && <MenuManagementView />}
         {activeTab === 'inventory' && <InventoryView />}
@@ -611,7 +761,6 @@ const DashboardView = () => {
             <div className="p-3 bg-green-50 rounded-xl">
               <DollarSign className="w-6 h-6 text-green-600" />
             </div>
-            <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">+12.5%</span>
           </div>
           <h3 className="text-slate-500 text-sm font-medium">Total Revenue</h3>
           <p className="text-3xl font-bold text-slate-900 mt-1">{formatCurrency(totalRevenue)}</p>
@@ -1277,23 +1426,137 @@ const TablesView = () => {
             className={`aspect-square rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer transition-all border-2 ${
               table.status === 'occupied' 
                 ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' 
-                : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:shadow-md'
+                : table.status === 'reserved'
+                  ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:shadow-md'
             }`}
           >
             <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
-              table.status === 'occupied' ? 'bg-orange-100' : 'bg-slate-100'
+              table.status === 'occupied' ? 'bg-orange-100' : table.status === 'reserved' ? 'bg-purple-100' : 'bg-slate-100'
             }`}>
-              <Users className="w-8 h-8" />
+              {table.status === 'reserved' ? <Clock className="w-8 h-8" /> : <Users className="w-8 h-8" />}
             </div>
             <h3 className="text-xl font-bold mb-1">{table.name}</h3>
             <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-               table.status === 'occupied' ? 'bg-white/50' : 'bg-slate-100'
+               table.status !== 'available' ? 'bg-white/50' : 'bg-slate-100'
             }`}>
               {table.status}
             </span>
             <p className="mt-2 text-xs opacity-70">{table.seats} Seats</p>
           </div>
         ))}
+      </div>
+    </div>
+  );
+};
+
+const ReservationsView = () => {
+  const { state, dispatch } = useContext(StoreContext);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleCancel = (id: string) => {
+    if(confirm('Cancel this reservation?')) {
+        dispatch({ type: 'CANCEL_RESERVATION', payload: id });
+    }
+  }
+
+  const sortedReservations = [...state.reservations].sort((a, b) => {
+     return new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime();
+  });
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto">
+      <AddReservationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-slate-900">Reservations</h1>
+        <Button onClick={() => setIsModalOpen(true)}>
+          <Plus className="w-4 h-4" /> New Reservation
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Customer</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Date & Time</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Table</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Guests</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Status</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {sortedReservations.length === 0 ? (
+                        <tr>
+                            <td colSpan={6} className="p-8 text-center text-slate-500">No reservations found.</td>
+                        </tr>
+                    ) : (
+                        sortedReservations.map(res => (
+                        <tr key={res.id} className="hover:bg-slate-50">
+                            <td className="p-4">
+                                <p className="font-medium text-slate-900">{res.customerName}</p>
+                                <p className="text-xs text-slate-500">{res.contact || 'No contact info'}</p>
+                            </td>
+                            <td className="p-4 text-slate-600">
+                                <div className="flex flex-col">
+                                    <span>{new Date(res.date).toLocaleDateString()}</span>
+                                    <span className="text-xs font-bold text-indigo-600">{res.time}</span>
+                                </div>
+                            </td>
+                            <td className="p-4 text-slate-600">
+                                {state.tables.find(t => t.id === res.tableId)?.name || 'Unknown Table'}
+                            </td>
+                            <td className="p-4 text-slate-600">{res.guests}</td>
+                            <td className="p-4">
+                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                                    res.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                    res.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                    'bg-slate-100 text-slate-500'
+                                }`}>
+                                    {res.status}
+                                </span>
+                            </td>
+                            <td className="p-4 text-right">
+                                {res.status === 'confirmed' && (
+                                    <button 
+                                        onClick={() => handleCancel(res.id)}
+                                        className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                            </td>
+                        </tr>
+                        ))
+                    )}
+                </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <h3 className="font-bold text-lg mb-4 text-slate-900">Table Status</h3>
+                <div className="space-y-3">
+                    {state.tables.map(table => (
+                        <div key={table.id} className="flex justify-between items-center p-2 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="font-medium text-slate-700">{table.name} ({table.seats}p)</span>
+                            <span className={`text-xs px-2 py-1 rounded font-bold uppercase ${
+                                table.status === 'available' ? 'bg-green-100 text-green-700' :
+                                table.status === 'occupied' ? 'bg-orange-100 text-orange-700' :
+                                'bg-purple-100 text-purple-700'
+                            }`}>
+                                {table.status}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+             </div>
+        </div>
       </div>
     </div>
   );
@@ -1469,24 +1732,6 @@ const InventoryView = () => {
 
 const App = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
-
-  // Simulated WebSocket Effect
-  useEffect(() => {
-    const interval = setInterval(() => {
-        // Randomly simulate an external event, like a reservation coming in
-        if (Math.random() > 0.8) {
-            const randomTableIdx = Math.floor(Math.random() * INITIAL_TABLES.length);
-            const tableId = `t${randomTableIdx + 1}`;
-            // Only update if current status is available (simulating new reservation)
-            const table = state.tables.find(t => t.id === tableId);
-            if (table && table.status === 'available') {
-                dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId, status: 'reserved' } });
-            }
-        }
-    }, 15000); // Check every 15 seconds
-
-    return () => clearInterval(interval);
-  }, [state.tables]);
 
   return (
     <StoreContext.Provider value={{ state, dispatch }}>
