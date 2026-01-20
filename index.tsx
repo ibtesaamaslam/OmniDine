@@ -1571,13 +1571,7 @@ const ReservationsView = () => {
   const { state, dispatch } = useContext(StoreContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [reservationToEdit, setReservationToEdit] = useState<Reservation | undefined>(undefined);
-
-  const handleCancel = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if(confirm('Cancel this reservation?')) {
-        dispatch({ type: 'CANCEL_RESERVATION', payload: id });
-    }
-  }
+  const [reservationToCancel, setReservationToCancel] = useState<string | null>(null);
 
   const handleEdit = (reservation: Reservation) => {
       setReservationToEdit(reservation);
@@ -1589,6 +1583,31 @@ const ReservationsView = () => {
       setReservationToEdit(undefined);
   }
 
+  const handleCancelRequest = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setReservationToCancel(id);
+  }
+
+  const confirmCancel = () => {
+    if (reservationToCancel) {
+        const reservation = state.reservations.find(r => r.id === reservationToCancel);
+        if (reservation) {
+            dispatch({ type: 'CANCEL_RESERVATION', payload: reservation.id });
+            
+            // Check if we need to free up the table
+            const today = new Date().toISOString().split('T')[0];
+            const table = state.tables.find(t => t.id === reservation.tableId);
+            
+            // Only update table to available if it is currently 'reserved'.
+            // If it is 'occupied', do not change it.
+            if (reservation.date === today && table?.status === 'reserved') {
+                 dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: reservation.tableId, status: 'available' } });
+            }
+        }
+        setReservationToCancel(null);
+    }
+  }
+
   const sortedReservations = [...state.reservations].sort((a, b) => {
      return new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime();
   });
@@ -1597,6 +1616,26 @@ const ReservationsView = () => {
     <div className="p-8 max-w-7xl mx-auto">
       <AddReservationModal isOpen={isModalOpen} onClose={handleCloseModal} reservationToEdit={reservationToEdit} />
       
+      <Modal 
+        isOpen={!!reservationToCancel} 
+        onClose={() => setReservationToCancel(null)} 
+        title="Cancel Reservation"
+      >
+        <div className="space-y-4">
+            <div className="flex items-center gap-3 text-amber-600 bg-amber-50 p-3 rounded-lg">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm font-medium">This action cannot be undone.</p>
+            </div>
+            <p className="text-slate-600">
+                Are you sure you want to cancel this reservation? If the reservation is for today, the table will be marked as available.
+            </p>
+            <div className="flex gap-3 mt-4">
+                <Button variant="ghost" onClick={() => setReservationToCancel(null)} className="flex-1">Keep Reservation</Button>
+                <Button variant="danger" onClick={confirmCancel} className="flex-1">Yes, Cancel</Button>
+            </div>
+        </div>
+      </Modal>
+
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Reservations</h1>
         <Button onClick={() => setIsModalOpen(true)}>
@@ -1661,7 +1700,7 @@ const ReservationsView = () => {
                                         </button>
                                         <button 
                                             type="button"
-                                            onClick={(e) => handleCancel(res.id, e)}
+                                            onClick={(e) => handleCancelRequest(res.id, e)}
                                             className="text-red-600 hover:text-red-800 text-sm font-medium"
                                         >
                                             Cancel
