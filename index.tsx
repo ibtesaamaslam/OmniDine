@@ -199,6 +199,7 @@ type Action =
   | { type: 'DELETE_DISH'; payload: string }
   | { type: 'TOGGLE_DISH_AVAILABILITY'; payload: string }
   | { type: 'UPDATE_INVENTORY'; payload: { itemId: string; newStock: number } }
+  | { type: 'UPDATE_INVENTORY_ITEM'; payload: InventoryItem }
   | { type: 'ADD_INVENTORY_ITEM'; payload: InventoryItem }
   | { type: 'DELETE_INVENTORY_ITEM'; payload: string }
   | { type: 'CONSUME_INVENTORY'; payload: { items: OrderItem[] } }
@@ -264,6 +265,13 @@ const reducer = (state: AppState, action: Action): AppState => {
         ...state,
         inventory: state.inventory.map(item => 
           item.id === action.payload.itemId ? { ...item, stock: action.payload.newStock } : item
+        )
+      };
+    case 'UPDATE_INVENTORY_ITEM':
+      return {
+        ...state,
+        inventory: state.inventory.map(item => 
+          item.id === action.payload.id ? action.payload : item
         )
       };
     case 'ADD_INVENTORY_ITEM':
@@ -444,7 +452,7 @@ const AddDishModal = ({ isOpen, onClose, dishToEdit }: { isOpen: boolean; onClos
   );
 };
 
-const AddInventoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+const AddInventoryModal = ({ isOpen, onClose, itemToEdit }: { isOpen: boolean; onClose: () => void; itemToEdit?: InventoryItem }) => {
   const { dispatch } = useContext(StoreContext);
   const [formData, setFormData] = useState<Partial<InventoryItem>>({
     name: '',
@@ -453,18 +461,30 @@ const AddInventoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     threshold: 5
   });
 
+  useEffect(() => {
+    if (itemToEdit) {
+        setFormData(itemToEdit);
+    } else {
+        setFormData({ name: '', unit: 'pcs', stock: 0, threshold: 5 });
+    }
+  }, [itemToEdit, isOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    dispatch({ 
-      type: 'ADD_INVENTORY_ITEM', 
-      payload: { ...formData, id: Date.now().toString() } as InventoryItem 
-    });
-    setFormData({ name: '', unit: 'pcs', stock: 0, threshold: 5 });
+    if (itemToEdit) {
+        dispatch({ type: 'UPDATE_INVENTORY_ITEM', payload: { ...itemToEdit, ...formData } as InventoryItem });
+    } else {
+        dispatch({ 
+        type: 'ADD_INVENTORY_ITEM', 
+        payload: { ...formData, id: Date.now().toString() } as InventoryItem 
+        });
+    }
+    
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add Inventory Item">
+    <Modal isOpen={isOpen} onClose={onClose} title={itemToEdit ? "Edit Inventory Item" : "Add Inventory Item"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Item Name</label>
@@ -511,7 +531,7 @@ const AddInventoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
         </div>
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Add Item</Button>
+          <Button type="submit">Save</Button>
         </div>
       </form>
     </Modal>
@@ -1921,30 +1941,66 @@ const MenuManagementView = () => {
 const InventoryView = () => {
   const { state, dispatch } = useContext(StoreContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState<InventoryItem | undefined>(undefined);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   const handleStockUpdate = (itemId: string, newStock: number) => {
       if (newStock < 0) return;
       dispatch({ type: 'UPDATE_INVENTORY', payload: { itemId, newStock } });
   };
 
-  const handleDelete = (itemId: string, e: React.MouseEvent) => {
+  const handleEdit = (item: InventoryItem) => {
+    setItemToEdit(item);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteRequest = (itemId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if(window.confirm("Are you sure you want to delete this item?")) {
-        dispatch({ type: 'DELETE_INVENTORY_ITEM', payload: itemId });
+    setItemToDelete(itemId);
+  };
+
+  const confirmDelete = () => {
+    if (itemToDelete) {
+        dispatch({ type: 'DELETE_INVENTORY_ITEM', payload: itemToDelete });
+        setItemToDelete(null);
     }
   };
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <AddInventoryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <AddInventoryModal 
+        isOpen={isModalOpen} 
+        onClose={() => { setIsModalOpen(false); setItemToEdit(undefined); }} 
+        itemToEdit={itemToEdit}
+      />
+
+      <Modal 
+        isOpen={!!itemToDelete} 
+        onClose={() => setItemToDelete(null)} 
+        title="Delete Item"
+      >
+        <div className="space-y-4">
+            <div className="flex items-center gap-3 text-red-600 bg-red-50 p-3 rounded-lg">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm font-medium">This action cannot be undone.</p>
+            </div>
+            <p className="text-slate-600">
+                Are you sure you want to delete this inventory item? This may affect recipes.
+            </p>
+            <div className="flex gap-3 mt-4">
+                <Button variant="ghost" onClick={() => setItemToDelete(null)} className="flex-1">Cancel</Button>
+                <Button variant="danger" onClick={confirmDelete} className="flex-1">Delete Item</Button>
+            </div>
+        </div>
+      </Modal>
 
       <div className="flex justify-between items-center mb-8">
         <div>
             <h1 className="text-3xl font-bold text-slate-900">Inventory</h1>
             <p className="text-slate-500 mt-1">Track stock levels and ingredients.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
+        <Button onClick={() => { setItemToEdit(undefined); setIsModalOpen(true); }}>
           <Plus className="w-4 h-4" /> Add Item
         </Button>
       </div>
@@ -1967,7 +2023,14 @@ const InventoryView = () => {
                             )}
                             <button 
                                 type="button"
-                                onClick={(e) => handleDelete(item.id, e)}
+                                onClick={() => handleEdit(item)}
+                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={(e) => handleDeleteRequest(item.id, e)}
                                 className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                             >
                                 <Trash2 className="w-4 h-4" />
