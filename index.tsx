@@ -22,7 +22,10 @@ import {
   Edit,
   Save,
   RefreshCw,
-  Calendar
+  Calendar,
+  FileText,
+  Filter,
+  ArrowUpDown
 } from 'lucide-react';
 
 // --- TYPES & INTERFACES ---
@@ -69,6 +72,7 @@ interface InventoryItem {
 interface Category {
   id: string;
   name: string;
+  status?: string;
 }
 
 interface OrderItem {
@@ -82,7 +86,7 @@ interface OrderItem {
 }
 
 interface Order {
-  id: string;
+  id: string; // Sequence ID like "001"
   tableId: string;
   serverName: string;
   items: OrderItem[];
@@ -186,7 +190,7 @@ type AppState = {
 type Action = 
   | { type: 'LOGIN'; payload: User }
   | { type: 'LOGOUT' }
-  | { type: 'ADD_ORDER'; payload: Order }
+  | { type: 'ADD_ORDER'; payload: Omit<Order, 'id'> } // ID generated in reducer
   | { type: 'UPDATE_ORDER_STATUS'; payload: { orderId: string; status: Order['status'] } }
   | { type: 'UPDATE_ORDER_ITEM_STATUS'; payload: { orderId: string; itemId: string; status: OrderItem['status'] } }
   | { type: 'UPDATE_TABLE_STATUS'; payload: { tableId: string; status: Table['status'] } }
@@ -199,6 +203,7 @@ type Action =
   | { type: 'DELETE_INVENTORY_ITEM'; payload: string }
   | { type: 'CONSUME_INVENTORY'; payload: { items: OrderItem[] } }
   | { type: 'ADD_RESERVATION'; payload: Reservation }
+  | { type: 'UPDATE_RESERVATION'; payload: Reservation }
   | { type: 'CANCEL_RESERVATION'; payload: string };
 
 const initialState: AppState = {
@@ -215,7 +220,12 @@ const reducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case 'LOGIN': return { ...state, user: action.payload };
     case 'LOGOUT': return { ...state, user: null };
-    case 'ADD_ORDER': return { ...state, orders: [action.payload, ...state.orders] };
+    case 'ADD_ORDER': {
+      // Sequential ID Generation 001, 002, etc.
+      const nextId = String(state.orders.length + 1).padStart(3, '0');
+      const newOrder: Order = { ...action.payload, id: nextId };
+      return { ...state, orders: [newOrder, ...state.orders] };
+    }
     case 'UPDATE_ORDER_STATUS':
       return {
         ...state,
@@ -277,6 +287,11 @@ const reducer = (state: AppState, action: Action): AppState => {
     }
     case 'ADD_RESERVATION':
       return { ...state, reservations: [...state.reservations, action.payload] };
+    case 'UPDATE_RESERVATION':
+      return {
+        ...state,
+        reservations: state.reservations.map(r => r.id === action.payload.id ? action.payload : r)
+      };
     case 'CANCEL_RESERVATION':
       return { ...state, reservations: state.reservations.map(r => r.id === action.payload ? { ...r, status: 'cancelled' } : r) };
     default: return state;
@@ -498,7 +513,7 @@ const AddInventoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
   );
 };
 
-const AddReservationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+const AddReservationModal = ({ isOpen, onClose, reservationToEdit }: { isOpen: boolean; onClose: () => void, reservationToEdit?: Reservation }) => {
   const { state, dispatch } = useContext(StoreContext);
   const [formData, setFormData] = useState<Partial<Reservation>>({
     customerName: '',
@@ -508,6 +523,20 @@ const AddReservationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     tableId: ''
   });
 
+  useEffect(() => {
+    if (reservationToEdit) {
+      setFormData(reservationToEdit);
+    } else {
+      setFormData({
+        customerName: '',
+        guests: 2,
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+        tableId: ''
+      });
+    }
+  }, [reservationToEdit, isOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.tableId) {
@@ -515,38 +544,46 @@ const AddReservationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: ()
       return;
     }
 
-    const reservation: Reservation = {
-      id: Date.now().toString(),
-      tableId: formData.tableId || '',
-      customerName: formData.customerName || '',
-      guests: formData.guests || 2,
-      date: formData.date || '',
-      time: formData.time || '',
-      contact: formData.contact || '',
-      status: 'confirmed'
-    };
+    if (reservationToEdit) {
+        dispatch({
+            type: 'UPDATE_RESERVATION',
+            payload: { ...reservationToEdit, ...formData } as Reservation
+        });
+        
+        // Update table status if table changed or date is today
+        const now = new Date();
+        const isToday = formData.date === now.toISOString().split('T')[0];
+        if (isToday) {
+             // If table changed, free old table? Not necessarily, might still be reserved by someone else. 
+             // For simplicity in this demo, we just ensure the new table is reserved.
+             dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: formData.tableId || '', status: 'reserved' } });
+        }
+    } else {
+        const reservation: Reservation = {
+        id: Date.now().toString(),
+        tableId: formData.tableId || '',
+        customerName: formData.customerName || '',
+        guests: formData.guests || 2,
+        date: formData.date || '',
+        time: formData.time || '',
+        contact: formData.contact || '',
+        status: 'confirmed'
+        };
 
-    dispatch({ type: 'ADD_RESERVATION', payload: reservation });
-    
-    // If reserving for today and roughly now, set status to reserved
-    const now = new Date();
-    const isToday = formData.date === now.toISOString().split('T')[0];
-    if (isToday) {
-       dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: reservation.tableId, status: 'reserved' } });
+        dispatch({ type: 'ADD_RESERVATION', payload: reservation });
+        
+        const now = new Date();
+        const isToday = formData.date === now.toISOString().split('T')[0];
+        if (isToday) {
+            dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: reservation.tableId, status: 'reserved' } });
+        }
     }
 
     onClose();
-    setFormData({
-      customerName: '',
-      guests: 2,
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-      tableId: ''
-    });
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="New Reservation">
+    <Modal isOpen={isOpen} onClose={onClose} title={reservationToEdit ? "Edit Reservation" : "New Reservation"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
@@ -619,7 +656,7 @@ const AddReservationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: ()
         
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Create Reservation</Button>
+          <Button type="submit">Save</Button>
         </div>
       </form>
     </Modal>
@@ -674,8 +711,9 @@ const Sidebar = () => {
     { id: 'kds', icon: ChefHat, label: 'Kitchen', roles: ['admin', 'manager', 'chef'] },
     { id: 'reservations', icon: Calendar, label: 'Reservations', roles: ['admin', 'manager', 'waiter'] },
     { id: 'tables', icon: Users, label: 'Tables', roles: ['admin', 'manager', 'waiter'] },
-    { id: 'menu', icon: MenuIcon, label: 'Menu', roles: ['admin', 'manager'] },
+    { id: 'menu', icon: MenuIcon, label: 'Menu', roles: ['admin', 'manager'] }, // Admin only by convention in filtered list
     { id: 'inventory', icon: Package, label: 'Inventory', roles: ['admin', 'manager', 'chef'] },
+    { id: 'history', icon: FileText, label: 'Order History', roles: ['admin', 'manager'] },
   ];
 
   return (
@@ -732,6 +770,7 @@ const Sidebar = () => {
         {activeTab === 'tables' && <TablesView />}
         {activeTab === 'menu' && <MenuManagementView />}
         {activeTab === 'inventory' && <InventoryView />}
+        {activeTab === 'history' && <OrderHistoryView />}
       </div>
     </>
   );
@@ -746,6 +785,8 @@ const DashboardView = () => {
   const totalRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
   const activeTables = state.tables.filter(t => t.status === 'occupied').length;
 
+  const lowStockItems = state.inventory.filter(i => i.stock <= i.threshold);
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex justify-between items-center">
@@ -757,6 +798,20 @@ const DashboardView = () => {
           {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </span>
       </div>
+
+      {lowStockItems.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-4 animate-in fade-in slide-in-from-top-4">
+              <div className="p-2 bg-white rounded-full text-red-600">
+                  <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                  <h3 className="font-bold text-red-900">Low Stock Alert</h3>
+                  <p className="text-sm text-red-700 mt-1">
+                      The following items are running low: {lowStockItems.map(i => i.name).join(', ')}. Please replenish inventory.
+                  </p>
+              </div>
+          </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -807,7 +862,7 @@ const DashboardView = () => {
                     <UtensilsCrossed className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-slate-900">Order #{order.id.slice(-4)}</p>
+                    <p className="text-sm font-medium text-slate-900">Order #{order.id}</p>
                     <p className="text-xs text-slate-500">Table {state.tables.find(t => t.id === order.tableId)?.name} • {order.items.length} items</p>
                   </div>
                 </div>
@@ -949,7 +1004,7 @@ const POSView = () => {
     
     const total = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
     const order: Order = {
-      id: Date.now().toString(),
+      id: '', // Will be set in reducer
       tableId: selectedTable,
       serverName: state.user?.name || 'Unknown',
       items: cart,
@@ -1163,21 +1218,36 @@ const POSView = () => {
         <div className="p-6 border-b border-slate-100 bg-slate-50">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Current Table</h2>
           <div className="grid grid-cols-4 gap-2 mb-4">
-            {state.tables.map(table => (
-              <button
-                key={table.id}
-                onClick={() => { setSelectedTable(table.id); if(cart.length === 0) setViewMode('active'); }}
-                className={`p-2 rounded-lg text-xs font-medium border transition-all ${
-                  selectedTable === table.id
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : table.status === 'occupied' 
-                      ? 'bg-orange-50 text-orange-600 border-orange-200'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-                }`}
-              >
-                {table.name}
-              </button>
-            ))}
+            {state.tables.map(table => {
+                // Table visual status
+                const isOccupied = table.status === 'occupied';
+                const isReserved = table.status === 'reserved';
+                const isSelected = selectedTable === table.id;
+                
+                let bgClass = 'bg-white text-slate-600 border-slate-200';
+                if (isOccupied) bgClass = 'bg-orange-50 text-orange-700 border-orange-200';
+                if (isReserved) bgClass = 'bg-red-50 text-red-700 border-red-200';
+                if (!isOccupied && !isReserved) bgClass = 'bg-green-50 text-green-700 border-green-200';
+                
+                if (isSelected) bgClass = 'bg-slate-800 text-white border-slate-800 ring-2 ring-slate-400';
+
+                return (
+                  <button
+                    key={table.id}
+                    onClick={() => { 
+                        setSelectedTable(table.id); 
+                        // If occupied, switch to active view immediately to show orders
+                        if (isOccupied) setViewMode('active');
+                        else if (cart.length > 0) setViewMode('cart');
+                        else setViewMode('cart');
+                    }}
+                    className={`p-2 rounded-lg text-xs font-medium border transition-all flex flex-col items-center justify-center h-16 ${bgClass}`}
+                  >
+                    <span>{table.name}</span>
+                    <span className="text-[10px] opacity-80 uppercase mt-1">{table.status}</span>
+                  </button>
+                )
+            })}
           </div>
           
           {selectedTable && (
@@ -1254,7 +1324,7 @@ const POSView = () => {
                   {activeOrders.map(order => (
                      <div key={order.id} className="border-b border-slate-100 pb-4 last:border-0">
                         <div className="flex justify-between items-center mb-2">
-                           <span className="text-xs font-bold text-slate-500">Order #{order.id.slice(-4)}</span>
+                           <span className="text-xs font-bold text-slate-500">Order #{order.id}</span>
                            <span className={`text-xs px-2 py-0.5 rounded-full ${order.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{order.status}</span>
                         </div>
                         <div className="space-y-2">
@@ -1321,7 +1391,7 @@ const KDSView = () => {
               order.status === 'ready' ? 'bg-green-50' : 'bg-slate-50'
             } flex justify-between items-start`}>
               <div>
-                <h3 className="font-bold text-slate-900">Order #{order.id.slice(-4)}</h3>
+                <h3 className="font-bold text-slate-900">Order #{order.id}</h3>
                 <p className="text-sm text-slate-500">Table {state.tables.find(t => t.id === order.tableId)?.name}</p>
                 <p className="text-xs text-slate-400 mt-1">{new Date(order.createdAt).toLocaleTimeString()}</p>
               </div>
@@ -1413,12 +1483,8 @@ const KDSView = () => {
 const TablesView = () => {
   const { state, dispatch } = useContext(StoreContext);
 
-  const handleTableClick = (table: Table) => {
-    if (table.status === 'occupied') {
-       if (confirm(`Clear ${table.name}? This will mark it as available.`)) {
-         dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: table.id, status: 'available' } });
-       }
-    }
+  const updateTableStatus = (table: Table, status: Table['status']) => {
+      dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: table.id, status } });
   };
 
   return (
@@ -1428,29 +1494,65 @@ const TablesView = () => {
         {state.tables.map(table => (
           <div 
             key={table.id}
-            onClick={() => handleTableClick(table)}
-            className={`aspect-square rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer transition-all border-2 ${
+            className={`rounded-2xl flex flex-col items-center justify-between p-6 border-2 relative group ${
               table.status === 'occupied' 
-                ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' 
+                ? 'bg-orange-50 border-orange-200 text-orange-700' 
                 : table.status === 'reserved'
-                  ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
-                  : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100 hover:shadow-md'
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : 'bg-green-50 border-green-200 text-green-700'
             }`}
           >
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
-              table.status === 'occupied' ? 'bg-orange-100' : 
-              table.status === 'reserved' ? 'bg-red-100' : 
-              'bg-green-100'
-            }`}>
-              {table.status === 'reserved' ? <Clock className="w-8 h-8" /> : <Users className="w-8 h-8" />}
+            <div className="flex flex-col items-center">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+                table.status === 'occupied' ? 'bg-orange-100' : 
+                table.status === 'reserved' ? 'bg-red-100' : 
+                'bg-green-100'
+                }`}>
+                {table.status === 'reserved' ? <Clock className="w-8 h-8" /> : <Users className="w-8 h-8" />}
+                </div>
+                <h3 className="text-xl font-bold mb-1">{table.name}</h3>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                table.status !== 'available' ? 'bg-white/60' : 'bg-white/60'
+                }`}>
+                {table.status}
+                </span>
+                <p className="mt-2 text-xs opacity-70">{table.seats} Seats</p>
             </div>
-            <h3 className="text-xl font-bold mb-1">{table.name}</h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-               table.status !== 'available' ? 'bg-white/60' : 'bg-white/60'
-            }`}>
-              {table.status}
-            </span>
-            <p className="mt-2 text-xs opacity-70">{table.seats} Seats</p>
+            
+            <div className="w-full mt-4 space-y-2">
+                {table.status === 'available' && (
+                    <button 
+                        onClick={() => updateTableStatus(table, 'occupied')}
+                        className="w-full py-2 text-sm font-semibold bg-white rounded-lg shadow-sm border border-slate-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200 transition-colors"
+                    >
+                        Mark Occupied
+                    </button>
+                )}
+                 {table.status === 'occupied' && (
+                    <button 
+                        onClick={() => updateTableStatus(table, 'available')}
+                        className="w-full py-2 text-sm font-semibold bg-white rounded-lg shadow-sm border border-slate-200 hover:bg-green-50 hover:text-green-700 hover:border-green-200 transition-colors"
+                    >
+                        Mark Available
+                    </button>
+                )}
+                 {table.status === 'reserved' && (
+                    <>
+                        <button 
+                            onClick={() => updateTableStatus(table, 'occupied')}
+                            className="w-full py-2 text-sm font-semibold bg-white rounded-lg shadow-sm border border-slate-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200 transition-colors"
+                        >
+                            Guest Arrived
+                        </button>
+                         <button 
+                            onClick={() => updateTableStatus(table, 'available')}
+                            className="w-full py-2 text-sm font-semibold bg-white rounded-lg shadow-sm border border-slate-200 hover:bg-green-50 hover:text-green-700 hover:border-green-200 transition-colors"
+                        >
+                            Cancel Reserve
+                        </button>
+                    </>
+                )}
+            </div>
           </div>
         ))}
       </div>
@@ -1461,11 +1563,23 @@ const TablesView = () => {
 const ReservationsView = () => {
   const { state, dispatch } = useContext(StoreContext);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [reservationToEdit, setReservationToEdit] = useState<Reservation | undefined>(undefined);
 
-  const handleCancel = (id: string) => {
+  const handleCancel = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if(confirm('Cancel this reservation?')) {
         dispatch({ type: 'CANCEL_RESERVATION', payload: id });
     }
+  }
+
+  const handleEdit = (reservation: Reservation) => {
+      setReservationToEdit(reservation);
+      setIsModalOpen(true);
+  }
+
+  const handleCloseModal = () => {
+      setIsModalOpen(false);
+      setReservationToEdit(undefined);
   }
 
   const sortedReservations = [...state.reservations].sort((a, b) => {
@@ -1474,7 +1588,7 @@ const ReservationsView = () => {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <AddReservationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <AddReservationModal isOpen={isModalOpen} onClose={handleCloseModal} reservationToEdit={reservationToEdit} />
       
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Reservations</h1>
@@ -1530,12 +1644,22 @@ const ReservationsView = () => {
                             </td>
                             <td className="p-4 text-right">
                                 {res.status === 'confirmed' && (
-                                    <button 
-                                        onClick={() => handleCancel(res.id)}
-                                        className="text-red-600 hover:text-red-800 text-sm font-medium"
-                                    >
-                                        Cancel
-                                    </button>
+                                    <div className="flex justify-end gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleEdit(res)}
+                                            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => handleCancel(res.id, e)}
+                                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
                                 )}
                             </td>
                         </tr>
@@ -1583,7 +1707,8 @@ const MenuManagementView = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (confirm('Are you sure you want to delete this dish?')) {
       dispatch({ type: 'DELETE_DISH', payload: id });
     }
@@ -1693,7 +1818,11 @@ const MenuManagementView = () => {
                         <button onClick={() => handleEdit(dish)} className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                         <Edit className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleDelete(dish.id)} className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <button 
+                            type="button"
+                            onClick={(e) => handleDelete(dish.id, e)} 
+                            className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
                         <Trash2 className="w-4 h-4" />
                         </button>
                     </div>
@@ -1718,7 +1847,8 @@ const InventoryView = () => {
       dispatch({ type: 'UPDATE_INVENTORY', payload: { itemId, newStock } });
   };
 
-  const handleDelete = (itemId: string) => {
+  const handleDelete = (itemId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if(confirm("Are you sure you want to delete this item?")) {
         dispatch({ type: 'DELETE_INVENTORY_ITEM', payload: itemId });
     }
@@ -1742,7 +1872,7 @@ const InventoryView = () => {
         {state.inventory.map(item => {
             const isLow = item.stock <= item.threshold;
             return (
-                <div key={item.id} className={`bg-white p-6 rounded-xl shadow-sm border ${isLow ? 'border-red-200 ring-1 ring-red-100' : 'border-slate-200'}`}>
+                <div key={item.id} className={`bg-white p-6 rounded-xl shadow-sm border transition-all ${isLow ? 'border-red-300 ring-2 ring-red-100 bg-red-50' : 'border-slate-200'}`}>
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <h3 className="font-bold text-slate-900">{item.name}</h3>
@@ -1750,12 +1880,13 @@ const InventoryView = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             {isLow && (
-                                <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">
-                                    <AlertCircle className="w-3 h-3" /> Low Stock
+                                <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-white border border-red-200 px-2 py-1 rounded-full shadow-sm">
+                                    <AlertCircle className="w-3 h-3" /> Low
                                 </span>
                             )}
                             <button 
-                                onClick={() => handleDelete(item.id)}
+                                type="button"
+                                onClick={(e) => handleDelete(item.id, e)}
                                 className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                             >
                                 <Trash2 className="w-4 h-4" />
@@ -1777,7 +1908,7 @@ const InventoryView = () => {
                                     type="number" 
                                     value={item.stock}
                                     onChange={(e) => handleStockUpdate(item.id, parseFloat(e.target.value) || 0)}
-                                    className="w-20 text-center font-bold text-lg border-b border-slate-200 focus:border-indigo-500 focus:outline-none"
+                                    className="w-20 text-center font-bold text-lg border-b border-slate-200 focus:border-indigo-500 focus:outline-none bg-transparent"
                                 />
                                 <button 
                                     onClick={() => handleStockUpdate(item.id, item.stock + 1)}
@@ -1794,6 +1925,109 @@ const InventoryView = () => {
       </div>
     </div>
   );
+};
+
+const OrderHistoryView = () => {
+    const { state } = useContext(StoreContext);
+    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+    const [filterStatus, setFilterStatus] = useState<string>('all');
+
+    const sortedOrders = [...state.orders].sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    }).filter(o => filterStatus === 'all' || o.status === filterStatus);
+
+    const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+
+    return (
+        <div className="p-8 max-w-7xl mx-auto">
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900">Order History</h1>
+                    <p className="text-slate-500 mt-1">Review past orders and sales data.</p>
+                </div>
+                <div className="flex gap-2">
+                    <select 
+                        className="border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                    >
+                        <option value="all">All Status</option>
+                        <option value="completed">Completed</option>
+                        <option value="paid">Paid</option>
+                        <option value="ready">Ready</option>
+                        <option value="preparing">Preparing</option>
+                        <option value="pending">Pending</option>
+                    </select>
+                    <button 
+                        onClick={toggleSort}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50"
+                    >
+                        <ArrowUpDown className="w-4 h-4" />
+                        {sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase">Order ID</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase">Date & Time</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase">Table</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase">Items</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase">Total</th>
+                            <th className="p-4 text-xs font-bold text-slate-500 uppercase">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {sortedOrders.length === 0 ? (
+                            <tr>
+                                <td colSpan={6} className="p-8 text-center text-slate-500">No orders found matching your filters.</td>
+                            </tr>
+                        ) : (
+                            sortedOrders.map(order => (
+                                <tr key={order.id} className="hover:bg-slate-50">
+                                    <td className="p-4 font-mono font-medium text-slate-900">#{order.id}</td>
+                                    <td className="p-4 text-slate-600">
+                                        <div className="flex flex-col">
+                                            <span>{new Date(order.createdAt).toLocaleDateString()}</span>
+                                            <span className="text-xs text-slate-400">{new Date(order.createdAt).toLocaleTimeString()}</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-slate-600">
+                                        {state.tables.find(t => t.id === order.tableId)?.name || 'Unknown'}
+                                    </td>
+                                    <td className="p-4 text-slate-600">
+                                        <div className="flex flex-col gap-1">
+                                            {order.items.map((item, idx) => (
+                                                <span key={idx} className="text-xs">
+                                                    {item.qty}x {item.name}
+                                                </span>
+                                            ))}
+                                            {order.items.length > 3 && <span className="text-xs text-slate-400">...</span>}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 font-bold text-slate-900">{formatCurrency(order.total)}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                                            order.status === 'completed' || order.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                            order.status === 'ready' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-orange-100 text-orange-700'
+                                        }`}>
+                                            {order.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 };
 
 const App = () => {
