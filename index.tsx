@@ -305,7 +305,12 @@ const StoreContext = createContext<{
 
 // --- HELPERS ---
 
-const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+    }).format(amount);
+};
 
 const areModifiersEqual = (mods1: Modifier[], mods2: Modifier[]) => {
   if (mods1.length !== mods2.length) return false;
@@ -550,12 +555,9 @@ const AddReservationModal = ({ isOpen, onClose, reservationToEdit }: { isOpen: b
             payload: { ...reservationToEdit, ...formData } as Reservation
         });
         
-        // Update table status if table changed or date is today
         const now = new Date();
         const isToday = formData.date === now.toISOString().split('T')[0];
         if (isToday) {
-             // If table changed, free old table? Not necessarily, might still be reserved by someone else. 
-             // For simplicity in this demo, we just ensure the new table is reserved.
              dispatch({ type: 'UPDATE_TABLE_STATUS', payload: { tableId: formData.tableId || '', status: 'reserved' } });
         }
     } else {
@@ -711,7 +713,7 @@ const Sidebar = () => {
     { id: 'kds', icon: ChefHat, label: 'Kitchen', roles: ['admin', 'manager', 'chef'] },
     { id: 'reservations', icon: Calendar, label: 'Reservations', roles: ['admin', 'manager', 'waiter'] },
     { id: 'tables', icon: Users, label: 'Tables', roles: ['admin', 'manager', 'waiter'] },
-    { id: 'menu', icon: MenuIcon, label: 'Menu', roles: ['admin', 'manager'] }, // Admin only by convention in filtered list
+    { id: 'menu', icon: MenuIcon, label: 'Menu', roles: ['admin'] }, // RESTRICTED TO ADMIN
     { id: 'inventory', icon: Package, label: 'Inventory', roles: ['admin', 'manager', 'chef'] },
     { id: 'history', icon: FileText, label: 'Order History', roles: ['admin', 'manager'] },
   ];
@@ -1241,10 +1243,15 @@ const POSView = () => {
                         else if (cart.length > 0) setViewMode('cart');
                         else setViewMode('cart');
                     }}
-                    className={`p-2 rounded-lg text-xs font-medium border transition-all flex flex-col items-center justify-center h-16 ${bgClass}`}
+                    className={`p-1 rounded-lg text-xs font-medium border transition-all flex flex-col items-center justify-center h-16 relative ${bgClass}`}
                   >
+                    <div className="absolute top-1 right-1">
+                        {isOccupied && <Users className="w-3 h-3" />}
+                        {isReserved && <Clock className="w-3 h-3" />}
+                        {!isOccupied && !isReserved && <CheckCircle className="w-3 h-3" />}
+                    </div>
                     <span>{table.name}</span>
-                    <span className="text-[10px] opacity-80 uppercase mt-1">{table.status}</span>
+                    <span className="text-[10px] opacity-80 uppercase mt-0.5">{table.status}</span>
                   </button>
                 )
             })}
@@ -1701,16 +1708,25 @@ const MenuManagementView = () => {
   const [editingDish, setEditingDish] = useState<Dish | undefined>(undefined);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [localSearch, setLocalSearch] = useState('');
+  
+  // State for delete confirmation modal
+  const [dishToDelete, setDishToDelete] = useState<string | null>(null);
 
   const handleEdit = (dish: Dish) => {
     setEditingDish(dish);
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('Are you sure you want to delete this dish?')) {
-      dispatch({ type: 'DELETE_DISH', payload: id });
+  const onRequestDelete = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row clicks or other bubbling
+    e.preventDefault();  // Prevent default button behavior
+    setDishToDelete(id);
+  };
+
+  const confirmDelete = () => {
+    if (dishToDelete) {
+      dispatch({ type: 'DELETE_DISH', payload: dishToDelete });
+      setDishToDelete(null);
     }
   };
 
@@ -1731,6 +1747,27 @@ const MenuManagementView = () => {
         onClose={() => { setIsModalOpen(false); setEditingDish(undefined); }} 
         dishToEdit={editingDish}
       />
+
+      {/* Delete Confirmation Modal */}
+      <Modal 
+        isOpen={!!dishToDelete} 
+        onClose={() => setDishToDelete(null)} 
+        title="Delete Dish"
+      >
+        <div className="space-y-4">
+            <div className="flex items-center gap-3 text-red-600 bg-red-50 p-3 rounded-lg">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm font-medium">This action cannot be undone.</p>
+            </div>
+            <p className="text-slate-600">
+                Are you sure you want to delete this dish? It will be removed from the menu immediately.
+            </p>
+            <div className="flex gap-3 mt-4">
+                <Button variant="ghost" onClick={() => setDishToDelete(null)} className="flex-1">Cancel</Button>
+                <Button variant="danger" onClick={confirmDelete} className="flex-1">Delete Dish</Button>
+            </div>
+        </div>
+      </Modal>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
@@ -1815,15 +1852,19 @@ const MenuManagementView = () => {
                     </td>
                     <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
-                        <button onClick={() => handleEdit(dish)} className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                        <Edit className="w-4 h-4" />
+                        <button 
+                            type="button"
+                            onClick={() => handleEdit(dish)} 
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        >
+                            <Edit className="w-4 h-4" />
                         </button>
                         <button 
                             type="button"
-                            onClick={(e) => handleDelete(dish.id, e)} 
+                            onClick={(e) => onRequestDelete(dish.id, e)} 
                             className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         >
-                        <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                         </button>
                     </div>
                     </td>
@@ -1848,8 +1889,9 @@ const InventoryView = () => {
   };
 
   const handleDelete = (itemId: string, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
-    if(confirm("Are you sure you want to delete this item?")) {
+    if(window.confirm("Are you sure you want to delete this item?")) {
         dispatch({ type: 'DELETE_INVENTORY_ITEM', payload: itemId });
     }
   };
