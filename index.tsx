@@ -25,7 +25,11 @@ import {
   Calendar,
   FileText,
   Filter,
-  ArrowUpDown
+  ArrowUpDown,
+  Lock,
+  User as UserIcon,
+  ChevronLeft,
+  UserPlus
 } from 'lucide-react';
 
 // --- TYPES & INTERFACES ---
@@ -36,6 +40,8 @@ interface User {
   id: string;
   name: string;
   role: Role;
+  password?: string;
+  isSetup: boolean; // Tracks if the user has set their name and password
 }
 
 interface Modifier {
@@ -115,6 +121,12 @@ interface Reservation {
 
 // --- MOCK DATA ---
 
+const INITIAL_USERS: User[] = [
+  { id: 'u1', name: 'Administrator', role: 'admin', isSetup: false },
+  { id: 'u2', name: 'Wait Staff', role: 'waiter', isSetup: false },
+  { id: 'u3', name: 'Kitchen Staff', role: 'chef', isSetup: false }
+];
+
 const INITIAL_CATEGORIES: Category[] = [
   { id: 'c1', name: 'Starters' },
   { id: 'c2', name: 'Mains' },
@@ -179,6 +191,7 @@ const INITIAL_TABLES: Table[] = Array.from({ length: 12 }, (_, i) => ({
 
 type AppState = {
   user: User | null;
+  users: User[];
   categories: Category[];
   dishes: Dish[];
   tables: Table[];
@@ -190,6 +203,8 @@ type AppState = {
 type Action = 
   | { type: 'LOGIN'; payload: User }
   | { type: 'LOGOUT' }
+  | { type: 'SETUP_USER'; payload: { userId: string; name: string; password: string } }
+  | { type: 'UPDATE_USER_PASSWORD'; payload: { userId: string; password: string } }
   | { type: 'ADD_ORDER'; payload: Omit<Order, 'id'> } // ID generated in reducer
   | { type: 'UPDATE_ORDER_STATUS'; payload: { orderId: string; status: Order['status'] } }
   | { type: 'UPDATE_ORDER_ITEM_STATUS'; payload: { orderId: string; itemId: string; status: OrderItem['status'] } }
@@ -209,6 +224,7 @@ type Action =
 
 const initialState: AppState = {
   user: null,
+  users: INITIAL_USERS,
   categories: INITIAL_CATEGORIES,
   dishes: INITIAL_DISHES,
   tables: INITIAL_TABLES,
@@ -221,6 +237,21 @@ const reducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case 'LOGIN': return { ...state, user: action.payload };
     case 'LOGOUT': return { ...state, user: null };
+    case 'SETUP_USER': {
+      const updatedUsers = state.users.map(u => 
+        u.id === action.payload.userId 
+          ? { ...u, name: action.payload.name, password: action.payload.password, isSetup: true } 
+          : u
+      );
+      const activeUser = updatedUsers.find(u => u.id === action.payload.userId) || null;
+      return { ...state, users: updatedUsers, user: activeUser };
+    }
+    case 'UPDATE_USER_PASSWORD':
+      return {
+        ...state,
+        users: state.users.map(u => u.id === action.payload.userId ? { ...u, password: action.payload.password } : u),
+        user: state.user?.id === action.payload.userId ? { ...state.user, password: action.payload.password } : state.user
+      };
     case 'ADD_ORDER': {
       // Sequential ID Generation 001, 002, etc.
       const nextId = String(state.orders.length + 1).padStart(3, '0');
@@ -362,6 +393,92 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose:
       </div>
     </div>
   );
+};
+
+const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+    const { state, dispatch } = useContext(StoreContext);
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+
+        if (state.user?.password && currentPassword !== state.user.password) {
+            setError('Current password is incorrect');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            setError('New passwords do not match');
+            return;
+        }
+
+        if (newPassword.length < 3) {
+            setError('Password must be at least 3 characters');
+            return;
+        }
+
+        if (state.user) {
+            dispatch({ type: 'UPDATE_USER_PASSWORD', payload: { userId: state.user.id, password: newPassword } });
+            setSuccess('Password updated successfully!');
+            setTimeout(() => {
+                onClose();
+                setSuccess('');
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+            }, 1000);
+        }
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Change Password">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>}
+                {success && <div className="p-3 bg-green-50 text-green-600 text-sm rounded-lg">{success}</div>}
+                
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Current Password</label>
+                    <input 
+                        required 
+                        type="password" 
+                        className="w-full border rounded-lg p-2"
+                        value={currentPassword}
+                        onChange={e => setCurrentPassword(e.target.value)} 
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+                    <input 
+                        required 
+                        type="password" 
+                        className="w-full border rounded-lg p-2"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)} 
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+                    <input 
+                        required 
+                        type="password" 
+                        className="w-full border rounded-lg p-2"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)} 
+                    />
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
+                    <Button type="submit">Update Password</Button>
+                </div>
+            </form>
+        </Modal>
+    );
 };
 
 const AddDishModal = ({ isOpen, onClose, dishToEdit }: { isOpen: boolean; onClose: () => void; dishToEdit?: Dish }) => {
@@ -688,35 +805,201 @@ const AddReservationModal = ({ isOpen, onClose, reservationToEdit }: { isOpen: b
 // --- VIEWS ---
 
 const LoginView = () => {
-  const { dispatch } = useContext(StoreContext);
+  const { state, dispatch } = useContext(StoreContext);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   
-  const handleLogin = (role: Role, name: string) => {
-    dispatch({ 
-      type: 'LOGIN', 
-      payload: { id: Date.now().toString(), name, role } 
-    });
+  // Login State
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  
+  // Setup State
+  const [setupName, setSetupName] = useState('');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupConfirm, setSetupConfirm] = useState('');
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedUser) {
+        if (selectedUser.password === password) {
+             dispatch({ 
+                type: 'LOGIN', 
+                payload: selectedUser 
+            });
+        } else {
+            setError('Incorrect password');
+            setPassword('');
+        }
+    }
+  };
+
+  const handleSetup = (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+
+      if (setupPassword !== setupConfirm) {
+          setError('Passwords do not match');
+          return;
+      }
+
+      if (setupPassword.length < 3) {
+          setError('Password must be at least 3 characters');
+          return;
+      }
+
+      if (selectedUser) {
+          dispatch({
+              type: 'SETUP_USER',
+              payload: { userId: selectedUser.id, name: setupName, password: setupPassword }
+          });
+      }
+  };
+
+  const handleUserSelect = (user: User) => {
+      setSelectedUser(user);
+      setError('');
+      setPassword('');
+      setSetupName('');
+      setSetupPassword('');
+      setSetupConfirm('');
+  };
+
+  const handleBack = () => {
+      setSelectedUser(null);
+      setError('');
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
-        <div className="bg-indigo-600 p-8 text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">OmniDine</h1>
-          <p className="text-indigo-100">Restaurant Management System</p>
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden transition-all duration-300">
+        <div className="bg-indigo-600 p-8 text-center relative">
+            {selectedUser && (
+                <button 
+                    onClick={handleBack} 
+                    className="absolute left-6 top-8 text-white/80 hover:text-white transition-colors"
+                >
+                    <ChevronLeft className="w-6 h-6" />
+                </button>
+            )}
+            <h1 className="text-3xl font-bold text-white mb-2">OmniDine</h1>
+            <p className="text-indigo-100">Restaurant Management System</p>
         </div>
-        <div className="p-8 space-y-4">
-          <p className="text-slate-600 text-center mb-6">Select a demo role to continue:</p>
-          <div className="grid grid-cols-1 gap-3">
-            <Button variant="secondary" onClick={() => handleLogin('admin', 'Alice Admin')} className="w-full justify-start text-lg h-14">
-              <LayoutDashboard className="w-5 h-5 mr-3 text-indigo-600" /> Admin / Manager
-            </Button>
-            <Button variant="secondary" onClick={() => handleLogin('waiter', 'Bob Server')} className="w-full justify-start text-lg h-14">
-              <UtensilsCrossed className="w-5 h-5 mr-3 text-emerald-600" /> Waiter (POS)
-            </Button>
-            <Button variant="secondary" onClick={() => handleLogin('chef', 'Charlie Chef')} className="w-full justify-start text-lg h-14">
-              <ChefHat className="w-5 h-5 mr-3 text-orange-600" /> Kitchen (KDS)
-            </Button>
-          </div>
+        
+        <div className="p-8">
+            {!selectedUser ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <p className="text-slate-600 text-center mb-6">Select your role to continue:</p>
+                    <div className="grid grid-cols-1 gap-3">
+                        {state.users.map(user => (
+                            <Button 
+                                key={user.id} 
+                                variant="secondary" 
+                                onClick={() => handleUserSelect(user)} 
+                                className="w-full justify-start text-lg h-16 relative group hover:border-indigo-200"
+                            >
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 transition-colors ${
+                                    user.role === 'admin' ? 'bg-indigo-100 text-indigo-600 group-hover:bg-indigo-200' :
+                                    user.role === 'waiter' ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200' :
+                                    'bg-orange-100 text-orange-600 group-hover:bg-orange-200'
+                                }`}>
+                                    {user.role === 'admin' ? <LayoutDashboard className="w-5 h-5" /> :
+                                     user.role === 'waiter' ? <UtensilsCrossed className="w-5 h-5" /> :
+                                     <ChefHat className="w-5 h-5" />}
+                                </div>
+                                <div className="text-left flex-1">
+                                    <span className="block font-bold text-slate-800">{user.isSetup ? user.name : user.name}</span>
+                                    <span className="block text-xs text-slate-500 capitalize">{user.role}</span>
+                                </div>
+                                {!user.isSetup && (
+                                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-medium">New</span>
+                                )}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+            ) : selectedUser.isSetup ? (
+                <form onSubmit={handleLogin} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="text-center">
+                        <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+                             {selectedUser.role === 'admin' ? <LayoutDashboard className="w-8 h-8" /> :
+                              selectedUser.role === 'waiter' ? <UtensilsCrossed className="w-8 h-8" /> :
+                              <ChefHat className="w-8 h-8" />}
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-900">{selectedUser.name}</h2>
+                        <p className="text-sm text-slate-500 capitalize">{selectedUser.role}</p>
+                    </div>
+
+                    <div>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+                            <input
+                                autoFocus
+                                type="password"
+                                placeholder="Enter Password"
+                                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                value={password}
+                                onChange={e => { setPassword(e.target.value); setError(''); }}
+                            />
+                        </div>
+                        {error && <p className="text-red-500 text-sm mt-2 text-center">{error}</p>}
+                    </div>
+
+                    <Button type="submit" className="w-full h-12 text-lg">
+                        Sign In
+                    </Button>
+                </form>
+            ) : (
+                <form onSubmit={handleSetup} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="text-center">
+                        <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+                             <UserPlus className="w-8 h-8" />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-900">Setup {selectedUser.name}</h2>
+                        <p className="text-sm text-slate-500">Create your account to continue</p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Your Name</label>
+                            <input
+                                required
+                                autoFocus
+                                type="text"
+                                placeholder="e.g. John Doe"
+                                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                value={setupName}
+                                onChange={e => setSetupName(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Create Password</label>
+                            <input
+                                required
+                                type="password"
+                                placeholder="••••••••"
+                                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                value={setupPassword}
+                                onChange={e => { setSetupPassword(e.target.value); setError(''); }}
+                            />
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
+                            <input
+                                required
+                                type="password"
+                                placeholder="••••••••"
+                                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                value={setupConfirm}
+                                onChange={e => { setSetupConfirm(e.target.value); setError(''); }}
+                            />
+                        </div>
+                        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                    </div>
+
+                    <Button type="submit" className="w-full h-12 text-lg">
+                        Complete Setup & Login
+                    </Button>
+                </form>
+            )}
         </div>
       </div>
     </div>
@@ -726,6 +1009,7 @@ const LoginView = () => {
 const Sidebar = () => {
   const { state, dispatch } = useContext(StoreContext);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'manager'] },
@@ -740,6 +1024,8 @@ const Sidebar = () => {
 
   return (
     <>
+      <ChangePasswordModal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} />
+      
       <div className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 z-20">
         <div className="p-6 border-b border-slate-800">
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -766,7 +1052,7 @@ const Sidebar = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center gap-3 px-4 py-3 mb-2">
+          <div className="flex items-center gap-3 px-4 py-3 mb-2 bg-slate-800/50 rounded-xl relative group">
             <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-white">
               {state.user?.name.charAt(0)}
             </div>
@@ -774,6 +1060,13 @@ const Sidebar = () => {
               <p className="text-sm font-medium text-white truncate">{state.user?.name}</p>
               <p className="text-xs text-slate-500 capitalize">{state.user?.role}</p>
             </div>
+            <button 
+                onClick={() => setIsPasswordModalOpen(true)}
+                title="Change Password"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-all"
+            >
+                <Settings className="w-4 h-4" />
+            </button>
           </div>
           <button 
             onClick={() => dispatch({ type: 'LOGOUT' })}
