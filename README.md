@@ -243,7 +243,36 @@ OmniDine/
 
 ## 📜 License
 
-MIT License
+```
+
+## 📜 License
+
+### MIT License — Private Use Only
+
+Copyright (c) 2024 Ibtesaam Aslam
+
+This project is provided for **viewing and evaluation purposes only**.
+
+Permission is hereby granted to view this software and its documentation files (the "Software") for personal, non-commercial, and educational purposes only.
+
+**Restrictions:**
+- You may NOT copy, modify, merge, publish, distribute, sublicense, or sell any part of the Software.
+- You may NOT use this project or its code in any commercial or production environment.
+- You may NOT claim this work as your own.
+
+Any use beyond viewing requires **explicit written permission** from the author.
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software (if permission is granted).
+
+---
+
+### Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+```
 
 ---
 
