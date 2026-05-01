@@ -245,32 +245,76 @@ OmniDine/
 
 ```
 
-## 📜 License
-
-### MIT License — Private Use Only
+Proprietary License — Commercial Use Restricted
 
 Copyright (c) 2024 Ibtesaam Aslam
+All Rights Reserved.
 
-This project is provided for **viewing and evaluation purposes only**.
 
-Permission is hereby granted to view this software and its documentation files (the "Software") for personal, non-commercial, and educational purposes only.
+1. Grant of Limited License
 
-**Restrictions:**
-- You may NOT copy, modify, merge, publish, distribute, sublicense, or sell any part of the Software.
-- You may NOT use this project or its code in any commercial or production environment.
-- You may NOT claim this work as your own.
+This software and associated documentation files (the "Software") are provided for viewing, evaluation, and non-commercial educational purposes only.
 
-Any use beyond viewing requires **explicit written permission** from the author.
+You are granted a non-exclusive, non-transferable, revocable license to access and review the Software solely for personal reference.
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software (if permission is granted).
 
----
+2. Permitted Use
 
-### Disclaimer
+You may access and review the Software for personal learning, reference, and evaluation purposes only.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+No other rights are granted unless explicitly stated in writing by the author.
 
-IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+3. Restrictions
+
+Except as expressly permitted above, you are strictly prohibited from:
+
+- Copying, reproducing, or redistributing the Software in whole or in part
+- Modifying, adapting, reverse engineering, or creating derivative works
+- Using the Software for commercial purposes, including but not limited to:
+  client work, freelance projects, SaaS, product development, or internal business use
+- Selling, sublicensing, leasing, or monetizing the Software
+- Removing or altering copyright notices
+- Claiming the Software as your own
+
+
+4. Commercial Use
+
+Any commercial use of the Software requires prior written permission from the author.
+
+Unauthorized commercial use constitutes a violation of this license and may result in legal action.
+
+
+5. Ownership
+
+All rights, title, and interest in and to the Software, including all intellectual property rights, remain the sole property of Ibtesaam Aslam.
+
+This license does not grant any ownership rights.
+
+
+6. Termination
+
+This license is effective until terminated.
+
+It will terminate automatically without notice if you violate any terms of this license. Upon termination, you must immediately cease all use of the Software and destroy any copies in your possession.
+
+
+7. Disclaimer of Warranty
+
+The Software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+
+
+8. Limitation of Liability
+
+In no event shall the author be liable for any claim, damages, or other liability arising from, out of, or in connection with the Software or the use or other dealings in the Software.
+
+
+9. Governing Law
+
+This license shall be governed and construed in accordance with the applicable laws of the relevant jurisdiction.
+
+
+By accessing or using this Software, you agree to be bound by the terms of this license.
 
 ```
 
