@@ -1,101 +1,257 @@
-# OmniDine — Restaurant Management System
 
-OmniDine is a modern, responsive, single-page application (SPA) built with React and Tailwind CSS designed to streamline restaurant operations. It features a comprehensive suite of tools for Point of Sale (POS), Kitchen Display Systems (KDS), Inventory Management, Table Reservation, and Menu Administration.
 
-## 🚀 Features
+# 🍽️ OmniDine — AI-Ready Restaurant Management System
+
+<div align="center">
+
+![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge\&logo=react\&logoColor=black)
+![Tailwind](https://img.shields.io/badge/TailwindCSS-06B6D4?style=for-the-badge\&logo=tailwindcss\&logoColor=white)
+![Architecture](https://img.shields.io/badge/Architecture-SPA-green?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Stable-success?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
+
+**Run smarter restaurants. Faster orders. Better decisions.**
+
+OmniDine is a modern, responsive **Restaurant Management System (RMS)** built as a single-page application using React and Tailwind CSS. It combines POS, Kitchen Display, Inventory, Reservations, and Analytics into one seamless workflow.
+
+[🔗 View Repository](https://github.com/ibtesaamaslam/OmniDine) · [🐛 Report Bug](https://github.com/ibtesaamaslam/OmniDine/issues) · [✨ Request Feature](https://github.com/ibtesaamaslam/OmniDine/issues)
+
+</div>
+
+---
+
+## 📋 Table of Contents
+
+* [Overview](#-overview)
+* [Features](#-features)
+* [System Modules](#-system-modules)
+* [Tech Stack](#-tech-stack)
+* [Getting Started](#-getting-started)
+* [User Roles](#-user-roles)
+* [Project Structure](#-project-structure)
+* [Limitations](#-limitations)
+* [Future Improvements](#-future-improvements)
+* [License](#-license)
+
+---
+
+## 📌 Overview
+
+**OmniDine** is a complete front-end restaurant management solution designed to simulate real-world operations.
+
+It integrates:
+
+* 🧾 Order management (POS)
+* 🍳 Kitchen workflows (KDS)
+* 📦 Inventory tracking
+* 📅 Table reservations
+* 📊 Business analytics
+
+All within a **fast, responsive, and modular SPA architecture**.
+
+---
+
+## ✨ Features
 
 ### 🔐 Authentication & Security
-- **Role-Based Access Control (RBAC):** distinct interfaces for Admins, Waiters, and Kitchen Staff.
-- **First-Time Setup Workflow:** New accounts start uninitialized. Users must define their display name and secure password upon their first login.
-- **Self-Service Password Change:** Logged-in users can update their passwords via the settings menu.
+
+* Role-Based Access Control (Admin, Waiter, Kitchen Staff)
+* First-time setup workflow for secure onboarding
+* Self-service password updates
+
+---
+
+## 🧩 System Modules
 
 ### 🏪 Point of Sale (POS)
-- **Visual Menu:** Categorized grid view of dishes with search functionality.
-- **Table Management:** Assign orders to specific tables with visual status indicators (Available, Occupied, Reserved).
-- **Customizable Orders:** Support for dish modifiers (e.g., "Extra Cheese", "No Onions") and quantity adjustments.
-- **Cart System:** Review orders, modify items, and calculate totals before submission.
+
+* Visual categorized menu with search
+* Table-based order assignment
+* Dish customization (modifiers, notes)
+* Smart cart with real-time calculations
+
+---
 
 ### 🍳 Kitchen Display System (KDS)
-- **Real-Time Order Ticket Board:** Orders appear instantly as they are placed.
-- **Status Workflow:** Track order lifecycle from `Pending` → `Preparing` → `Ready` → `Completed`.
-- **Inventory Integration:** Automatically depletes stock levels when items are moved to "Preparing".
-- **Visual Cues:** Color-coded tickets and timers (creation time) to prioritize orders.
+
+* Live order ticket board
+* Order lifecycle tracking:
+
+  ```
+  Pending → Preparing → Ready → Completed
+  ```
+* Auto inventory deduction
+* Color-coded priority system
+
+---
 
 ### 📦 Inventory & Menu Management
-- **Recipe Linking:** Link dishes to inventory ingredients (e.g., A "Burger" dish consumes 1 "Bun" and 1 "Patty").
-- **Stock Tracking:** Real-time stock level updates with visual low-stock alerts on the dashboard.
-- **Menu Admin:** Create, edit, delete, and toggle availability of dishes and categories.
+
+* Ingredient-based recipe linking
+* Real-time stock updates
+* Low-stock alerts
+* Full CRUD menu management
+
+---
 
 ### 📅 Tables & Reservations
-- **Interactive Floor Plan:** Visual grid of tables showing capacity and current status.
-- **Reservation System:** Book tables for future dates/times, tracking guest counts and contact info.
-- **Status Automation:** Tables update automatically based on reservation times and active orders.
+
+* Interactive floor layout
+* Reservation scheduling system
+* Auto status updates (Reserved / Occupied / Available)
+
+---
 
 ### 📊 Dashboard & Analytics
-- **Live Metrics:** View total revenue, daily order counts, and active table utilization.
-- **Low Stock Alerts:** Immediate warnings for items falling below defined thresholds.
-- **Recent Activity:** Log of the latest orders and transactions.
+
+* Revenue tracking
+* Daily order metrics
+* Active table utilization
+* Activity logs
+* Inventory alerts
+
+---
+
+## 🏗 System Architecture
+
+```
+User Interaction
+      ↓
+POS / Reservations / KDS
+      ↓
+State Management (useReducer)
+      ↓
+UI Updates (React Components)
+      ↓
+Inventory & Analytics Sync
+```
 
 ---
 
 ## 🛠 Tech Stack
 
-- **Frontend:** React 19 (Hooks, Context API, useReducer for state management)
-- **Styling:** Tailwind CSS (via CDN)
-- **Icons:** Lucide React
-- **Build/Run:** ES Modules (No complex bundler required for dev)
+| Layer        | Technology                                |
+| ------------ | ----------------------------------------- |
+| Frontend     | React 19 (Hooks, Context API, useReducer) |
+| Styling      | Tailwind CSS                              |
+| Icons        | Lucide React                              |
+| Architecture | SPA (Single Page Application)             |
+| Runtime      | Browser-based (ES Modules)                |
 
 ---
 
-## 🚦 Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-Since this project uses ES Modules directly in the browser via `index.html`, you simply need a static file server.
 
-### Installation & Running
-1.  **Clone or Download** the repository.
-2.  **Serve the directory**:
-    *   If using Python: `python3 -m http.server`
-    *   If using Node (http-server): `npx http-server .`
-    *   If using VS Code: Use the "Live Server" extension.
-3.  **Open in Browser**: Navigate to `http://localhost:8000` (or the port provided by your server).
+* Browser + Static server
 
 ---
 
-## 📖 User Guide
+### Installation
 
-### 1. Initial Setup (First Run)
-The system comes with 3 pre-configured role slots. Data is **in-memory**, so refreshing the page resets the app to this state.
-
-1.  **Select a Role**: Click on "Administrator", "Wait Staff", or "Kitchen Staff".
-2.  **Create Account**: Since these accounts are new (`isSetup: false`), you will be prompted to enter a **Name** and create a **Password**.
-3.  **Login**: Once setup is complete, you will be logged in automatically.
-4.  **Subsequent Logins**: If you log out, simply click your user tile and enter the password you created.
-
-### 2. Role Capabilities
-
-| Feature | Admin / Manager | Waiter | Chef |
-| :--- | :---: | :---: | :---: |
-| **Dashboard** | ✅ | ❌ | ❌ |
-| **POS (Take Orders)** | ✅ | ✅ | ❌ |
-| **Kitchen Display (KDS)** | ✅ | ❌ | ✅ |
-| **Reservations** | ✅ | ✅ | ❌ |
-| **Table Management** | ✅ | ✅ | ❌ |
-| **Menu Editing** | ✅ | ❌ | ❌ |
-| **Inventory** | ✅ | ❌ | ✅ |
-| **Order History** | ✅ | ❌ | ❌ |
+```bash
+# Clone the repository
+git clone https://github.com/ibtesaamaslam/OmniDine.git
+cd OmniDine
+```
 
 ---
 
-## 📂 Project Structure
+### Run Locally
 
-- **index.html**: Entry point. Loads Tailwind CSS and the React application.
-- **index.tsx**: Contains the entire application logic (Components, State Management, Views, and Styles).
-  - *State Store:* `useReducer` handles complex state logic (orders, inventory, users).
-  - *Views:* Separated components for POS, KDS, Dashboard, etc.
-- **metadata.json**: Project configuration and permissions.
+```bash
+# Python
+python3 -m http.server
+
+# OR Node
+npx http-server .
+
+# OR VS Code Live Server
+```
+
+Open:
+
+```
+http://localhost:8000
+```
 
 ---
 
-## ⚠️ Note on Persistence
-This is a client-side demo application. All data (orders, inventory changes, user passwords) is stored in the browser's memory. **Refreshing the page will reset the application to its initial state.** For a production environment, a backend (Node.js, Firebase, Supabase, etc.) would be required to persist data.
+## 👥 User Roles
+
+| Feature         | Admin | Waiter | Chef |
+| --------------- | ----- | ------ | ---- |
+| Dashboard       | ✅     | ❌      | ❌    |
+| POS             | ✅     | ✅      | ❌    |
+| KDS             | ✅     | ❌      | ✅    |
+| Reservations    | ✅     | ✅      | ❌    |
+| Menu Management | ✅     | ❌      | ❌    |
+| Inventory       | ✅     | ❌      | ✅    |
+| Order History   | ✅     | ❌      | ❌    |
+
+---
+
+## 🔄 How It Works
+
+```
+Login → Select Role
+     ↓
+Take Orders (POS)
+     ↓
+Send to Kitchen (KDS)
+     ↓
+Update Inventory
+     ↓
+Complete Order
+     ↓
+Analytics Dashboard Update
+```
+
+---
+
+## 📁 Project Structure
+
+```
+OmniDine/
+├── index.html        # Entry point
+├── index.tsx         # Full app logic (components + state)
+├── metadata.json     # Config
+```
+
+---
+
+## ⚠️ Limitations
+
+* In-memory data storage (no persistence)
+* Page refresh resets all data
+* No backend integration
+* Single-device usage
+
+---
+
+## 🔮 Future Improvements
+
+* [ ] Backend integration (Node.js / Firebase / Supabase)
+* [ ] Real database persistence
+* [ ] Multi-user real-time sync
+* [ ] Payment gateway integration
+* [ ] AI-based demand prediction
+* [ ] Mobile-first PWA version
+
+---
+
+## 📜 License
+
+MIT License
+
+---
+
+<div align="center">
+
+Built with ❤️ by **Ibtesaam Aslam**
+
+⭐ Star this repo if you found it useful
+
+</div>
+
