@@ -1,4 +1,5 @@
 
+<img width="1536" height="1024" alt="ChatGPT Image May 2, 2026, 02_00_55 PM" src="https://github.com/user-attachments/assets/dd37df2f-b705-40e0-8b65-aa6380d0e987" />
 
 # 🍽️ OmniDine — AI-Ready Restaurant Management System
 
